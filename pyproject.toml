@@ -34,7 +34,7 @@ where = ["src"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["osx-64", "win-64"]
+platforms = ["linux-64", "osx-64", "win-64"]
 
 [tool.pixi.pypi-dependencies]
 biomero-schema = { path = ".", editable = true }
