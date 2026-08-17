@@ -1,8 +1,15 @@
 # BIOMERO Schema
 
-The BIOMERO schema is defined as a `pydantic` model, and can be exported as `json-schema`.
+This package contains Pydantic schemas shared by BIOMERO services. Schemas can
+be exported as JSON Schema.
 
-A CLI tool is included to validate and parse JSON files against the schema.
+A CLI tool is included to validate and parse workflow descriptor files.
+
+Two schema areas are kept separate:
+
+* `biomero_schema.models` defines workflow descriptors.
+* `biomero_schema.zarr` defines canonical Zarr source and pixel-identity
+  interchange records. See [Zarr interchange contracts](docs/zarr-contracts.md).
 
 The schema is a mix of:
 * the [BiaFlows subset](https://neubias-wg5.github.io/creating_bia_workflow_and_adding_to_biaflows_instance.html#workflow_step3) of the (now deprecated) [original cytomine](https://github.com/cytomine/cytomine/blob/5f4f7cb3f90a244b8c95c064918fd6986a4de2cf/cytomine/utilities/descriptor_reader.py) schema
