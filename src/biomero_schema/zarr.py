@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 CANONICAL_SOURCE_NAMESPACE = "biomero.zarr.source"
 CANONICAL_SOURCE_SCHEMA = 1
+CANONICAL_PLATE_SOURCE_NAMESPACE = "biomero.zarr.plate-source"
 SHALLOW_COLLECTION_MANIFEST = ".biomero-shallow.json"
 SHALLOW_COLLECTION_NAMESPACE = "biomero.zarr.shallow"
 PIXEL_IDENTITY_METHOD = "iscc-bio/imagewalk"
@@ -238,6 +239,108 @@ class ZarrLabelComponent(ZarrContractModel):
         return self
 
 
+class CanonicalPlateImage(ZarrContractModel):
+    """One image-level node and its labels within a canonical Plate Zarr."""
+
+    image_node_path: str = Field(alias="imageNodePath")
+    source: CanonicalZarrSource
+    labels: tuple[ZarrLabelComponent, ...] = Field(default_factory=tuple)
+
+    @field_validator("image_node_path")
+    @classmethod
+    def validate_image_node_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+    @model_validator(mode="after")
+    def validate_plate_image(self) -> "CanonicalPlateImage":
+        if self.source.source_object_type != "Plate":
+            raise ValueError("canonical Plate image source must belong to a Plate")
+        if self.source.node_path != self.image_node_path:
+            raise ValueError("Plate image source.nodePath must equal imageNodePath")
+        paths = [label.logical_node_path for label in self.labels]
+        if len(paths) != len(set(paths)):
+            raise ValueError("canonical Plate label paths must be unique per image")
+        return self
+
+
+class CanonicalPlateSource(ZarrContractModel):
+    """Managed canonical Plate Zarr with independently identified image nodes."""
+
+    storage_root: str = Field(alias="storageRoot", min_length=1)
+    relative_path: str = Field(alias="relativePath")
+    source_object_id: int = Field(alias="sourceObjectId", gt=0)
+    source_generation: int = Field(alias="sourceGeneration", gt=0)
+    interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
+    images: tuple[CanonicalPlateImage, ...] = Field(min_length=1)
+    store_identity: str | None = Field(
+        default=None,
+        alias="storeIdentity",
+        pattern=r"^ISCC:",
+    )
+    schema_version: Literal[1] = Field(default=1, alias="schema")
+
+    @property
+    def schema(self) -> int:
+        return self.schema_version
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+    @model_validator(mode="after")
+    def validate_images(self) -> "CanonicalPlateSource":
+        paths = [image.image_node_path for image in self.images]
+        if len(paths) != len(set(paths)):
+            raise ValueError("canonical Plate image paths must be unique")
+        for image in self.images:
+            source = image.source
+            if (
+                source.storage_root != self.storage_root
+                or source.relative_path != self.relative_path
+                or source.source_object_id != self.source_object_id
+                or source.source_generation != self.source_generation
+                or source.interchange_profile != self.interchange_profile
+            ):
+                raise ValueError(
+                    "canonical Plate image source must match its Plate locator"
+                )
+        return self
+
+    def to_annotation_values(self) -> dict[str, str]:
+        values = {
+            "schema": str(self.schema),
+            "storageRoot": self.storage_root,
+            "relativePath": self.relative_path,
+            "sourceObjectId": str(self.source_object_id),
+            "sourceGeneration": str(self.source_generation),
+            "interchangeProfile": self.interchange_profile,
+            "images": json.dumps(
+                [image.to_dict() for image in self.images],
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        }
+        if self.store_identity is not None:
+            values["storeIdentity"] = self.store_identity
+        return values
+
+    @classmethod
+    def from_annotation_values(
+        cls, values: Mapping[str, str]
+    ) -> "CanonicalPlateSource":
+        return cls(
+            schema=int(values["schema"]),
+            storage_root=values["storageRoot"],
+            relative_path=values["relativePath"],
+            source_object_id=int(values["sourceObjectId"]),
+            source_generation=int(values["sourceGeneration"]),
+            interchange_profile=values["interchangeProfile"],
+            images=tuple(json.loads(values["images"])),
+            store_identity=values.get("storeIdentity"),
+        )
+
+
 class CanonicalInput(ZarrContractModel):
     """One selected OMERO object and the exact canonical generation exported."""
 
@@ -246,7 +349,11 @@ class CanonicalInput(ZarrContractModel):
         alias="selectedObjectType"
     )
     selected_object_id: int = Field(alias="selectedObjectId", gt=0)
-    source: CanonicalZarrSource
+    source: CanonicalZarrSource | None = None
+    plate_source: CanonicalPlateSource | None = Field(
+        default=None,
+        alias="plateSource",
+    )
     transfer_artifact: str | None = Field(
         default=None,
         alias="transferArtifact",
@@ -275,6 +382,20 @@ class CanonicalInput(ZarrContractModel):
             raise ValueError("canonical input label paths must be unique")
         if any(label.source is None for label in self.labels):
             raise ValueError("canonical input labels require managed sources")
+        if self.selected_object_type == "Image":
+            if self.source is None or self.plate_source is not None:
+                raise ValueError("Image canonical input requires source only")
+        elif self.plate_source is None:
+            # Accept the earlier Plate-shaped payload so persisted events still
+            # load, but new writers use plateSource with per-image identities.
+            if self.source is None or self.source.source_object_type != "Plate":
+                raise ValueError("Plate canonical input requires plateSource")
+        elif self.source is not None:
+            raise ValueError("Plate canonical input cannot contain image source")
+        if self.plate_source is not None and (
+            self.plate_source.source_object_id != self.selected_object_id
+        ):
+            raise ValueError("plateSource must belong to selected Plate")
         return self
 
 
@@ -309,7 +430,6 @@ class ShallowImageReference(ZarrContractModel):
     )
     label_node_paths: tuple[str, ...] = Field(
         alias="labelNodePaths",
-        min_length=1,
     )
     label_components: tuple[ZarrLabelComponent, ...] = Field(
         default_factory=tuple,
@@ -382,6 +502,8 @@ class ShallowCollection(ZarrContractModel):
         paths = [image.image_node_path for image in self.images]
         if len(paths) != len(set(paths)):
             raise ValueError("shallow image node paths must be unique")
+        if not any(image.label_node_paths for image in self.images):
+            raise ValueError("shallow collection must retain or reference a label")
         return self
 
 
@@ -517,11 +639,14 @@ class ShallowZarrReference(ZarrContractModel):
 __all__ = [
     "CANONICAL_SOURCE_NAMESPACE",
     "CANONICAL_SOURCE_SCHEMA",
+    "CANONICAL_PLATE_SOURCE_NAMESPACE",
     "PIXEL_IDENTITY_METHOD",
     "SHALLOW_COLLECTION_MANIFEST",
     "SHALLOW_COLLECTION_NAMESPACE",
     "CanonicalInput",
     "CanonicalInputManifest",
+    "CanonicalPlateImage",
+    "CanonicalPlateSource",
     "CanonicalZarrSource",
     "ManagedZarrNode",
     "PixelIdentity",

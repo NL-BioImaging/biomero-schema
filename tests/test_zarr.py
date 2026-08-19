@@ -6,9 +6,12 @@ from uuid import UUID
 
 from biomero_schema.zarr import (
     CANONICAL_SOURCE_NAMESPACE,
+    CANONICAL_PLATE_SOURCE_NAMESPACE,
     SHALLOW_COLLECTION_NAMESPACE,
     CanonicalInput,
     CanonicalInputManifest,
+    CanonicalPlateImage,
+    CanonicalPlateSource,
     CanonicalZarrSource,
     ManagedZarrNode,
     PixelIdentity,
@@ -171,6 +174,65 @@ def test_canonical_input_rejects_unmanaged_local_label(
                     "role": "label",
                 }),
             ),),
+        )
+
+
+def test_canonical_plate_source_round_trips_with_per_image_identities(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    def plate_image(path: str, instance: str) -> CanonicalPlateImage:
+        identity = pixel_identity.model_copy(update={
+            "node_path": path,
+            "instance_code": instance,
+        })
+        return CanonicalPlateImage(
+            image_node_path=path,
+            source=canonical_source.model_copy(update={
+                "relative_path": ".processed/Plate-55.g1.ome.zarr",
+                "node_path": path,
+                "source_object_type": "Plate",
+                "source_object_id": 55,
+                "pixel_identity": identity,
+            }),
+        )
+
+    plate = CanonicalPlateSource(
+        storage_root="group-5-data",
+        relative_path=".processed/Plate-55.g1.ome.zarr",
+        source_object_id=55,
+        source_generation=1,
+        interchange_profile="ngff-0.4-zarr-v2",
+        images=(
+            plate_image("A/1/0", "ISCC:IA10"),
+            plate_image("B/1/0", "ISCC:IB10"),
+        ),
+    )
+    restored = CanonicalPlateSource.from_annotation_values(
+        plate.to_annotation_values()
+    )
+    canonical_input = CanonicalInput(
+        ordinal=0,
+        selected_object_type="Plate",
+        selected_object_id=55,
+        transfer_artifact="plate.zarr",
+        plate_source=plate,
+    )
+
+    assert CANONICAL_PLATE_SOURCE_NAMESPACE == "biomero.zarr.plate-source"
+    assert restored == plate
+    assert CanonicalInput.from_dict(canonical_input.to_dict()) == canonical_input
+
+
+def test_plate_input_requires_matching_plate_source(
+    canonical_source: CanonicalZarrSource,
+) -> None:
+    with pytest.raises(ValidationError, match="requires plateSource"):
+        CanonicalInput(
+            ordinal=0,
+            selected_object_type="Plate",
+            selected_object_id=55,
+            source=canonical_source,
         )
 
 
