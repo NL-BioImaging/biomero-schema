@@ -14,6 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 CANONICAL_SOURCE_NAMESPACE = "biomero.zarr.source"
 CANONICAL_SOURCE_SCHEMA = 1
+SHALLOW_COLLECTION_MANIFEST = ".biomero-shallow.json"
+SHALLOW_COLLECTION_NAMESPACE = "biomero.zarr.shallow"
 PIXEL_IDENTITY_METHOD = "iscc-bio/imagewalk"
 
 
@@ -241,12 +243,87 @@ class CanonicalInputManifest(ZarrContractModel):
         return self
 
 
+class ShallowImageReference(ZarrContractModel):
+    """One omitted image node and the labels retained for it."""
+
+    image_node_path: str = Field(alias="imageNodePath")
+    source: CanonicalZarrSource
+    returned_pixel_identity: PixelIdentity = Field(
+        alias="returnedPixelIdentity"
+    )
+    label_node_paths: tuple[str, ...] = Field(
+        alias="labelNodePaths",
+        min_length=1,
+    )
+
+    @field_validator("image_node_path")
+    @classmethod
+    def validate_image_node_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=True)
+
+    @field_validator("label_node_paths")
+    @classmethod
+    def validate_label_node_paths(
+        cls,
+        value: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        validated = tuple(
+            _validate_relative_path(path, allow_dot=False) for path in value
+        )
+        if len(validated) != len(set(validated)):
+            raise ValueError("labelNodePaths must be unique")
+        return validated
+
+    @model_validator(mode="after")
+    def validate_identity_node(self) -> "ShallowImageReference":
+        if self.returned_pixel_identity.node_path != self.image_node_path:
+            raise ValueError(
+                "returnedPixelIdentity.nodePath must equal imageNodePath"
+            )
+        if self.returned_pixel_identity.role != "image":
+            raise ValueError("returnedPixelIdentity must describe an image")
+        return self
+
+
+class ShallowCollection(ZarrContractModel):
+    """BIOMERO's RFC-8-shaped record for a stored shallow result."""
+
+    workflow_id: UUID = Field(alias="workflowId")
+    transfer_artifact: str = Field(alias="transferArtifact", min_length=1)
+    images: tuple[ShallowImageReference, ...] = Field(min_length=1)
+    interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
+    model: Literal["rfc8-shallow-copy"] = "rfc8-shallow-copy"
+    schema_version: Literal[1] = Field(default=1, alias="schema")
+
+    @property
+    def schema(self) -> int:
+        return self.schema_version
+
+    @field_validator("transfer_artifact")
+    @classmethod
+    def validate_transfer_artifact(cls, value: str) -> str:
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("transferArtifact must be one relative artifact name")
+        return value
+
+    @model_validator(mode="after")
+    def validate_unique_image_nodes(self) -> "ShallowCollection":
+        paths = [image.image_node_path for image in self.images]
+        if len(paths) != len(set(paths)):
+            raise ValueError("shallow image node paths must be unique")
+        return self
+
+
 __all__ = [
     "CANONICAL_SOURCE_NAMESPACE",
     "CANONICAL_SOURCE_SCHEMA",
     "PIXEL_IDENTITY_METHOD",
+    "SHALLOW_COLLECTION_MANIFEST",
+    "SHALLOW_COLLECTION_NAMESPACE",
     "CanonicalInput",
     "CanonicalInputManifest",
     "CanonicalZarrSource",
     "PixelIdentity",
+    "ShallowCollection",
+    "ShallowImageReference",
 ]

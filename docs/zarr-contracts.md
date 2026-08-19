@@ -32,7 +32,14 @@ this package.
   events without this field remain valid; consumers must then use identity
   matching and reject ambiguous duplicate identities.
 - `CanonicalInputManifest` wraps the ordered inputs with their workflow and
-  export-task IDs for the event snapshot and task-side recovery file.
+  export-task IDs for the event snapshot.
+- `ShallowImageReference` binds an omitted returned image node to its managed
+  canonical source, verified returned-pixel identity, and retained label nodes.
+- `ShallowCollection` is the small RFC-8-shaped BIOMERO storage record written
+  as `.biomero-shallow.json`. It supports multiple image-node references so the
+  same contract can later represent plate results. This is an internal
+  cross-service record, not an OME-NGFF or BILAYERS extension that workflow
+  providers must understand.
 
 Each model has its own integer `schema` field. This version is independent of
 `BIOMERO_SCHEMA_VERSION`, which versions workflow descriptors. Contract changes

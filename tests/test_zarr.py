@@ -10,6 +10,8 @@ from biomero_schema.zarr import (
     CanonicalInputManifest,
     CanonicalZarrSource,
     PixelIdentity,
+    ShallowCollection,
+    ShallowImageReference,
 )
 
 
@@ -175,6 +177,46 @@ def test_rejects_shape_axes_mismatch() -> None:
             shape=(64, 64),
             dtype="uint16",
             axes=("y",),
+        )
+
+
+def test_shallow_collection_wire_round_trip(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    collection = ShallowCollection(
+        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        transfer_artifact="Image-3207.ome.zarr",
+        interchange_profile="ngff-0.4-zarr-v2",
+        images=(ShallowImageReference(
+            image_node_path=".",
+            source=canonical_source,
+            returned_pixel_identity=pixel_identity,
+            label_node_paths=("labels/cells", "labels/nuclei"),
+        ),),
+    )
+
+    wire = collection.to_dict()
+
+    assert wire["model"] == "rfc8-shallow-copy"
+    assert wire["images"][0]["source"]["sourceObjectId"] == 3207
+    assert wire["images"][0]["labelNodePaths"] == [
+        "labels/cells",
+        "labels/nuclei",
+    ]
+    assert ShallowCollection.from_dict(wire) == collection
+
+
+def test_shallow_reference_rejects_mismatched_identity_node(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    with pytest.raises(ValidationError, match="must equal imageNodePath"):
+        ShallowImageReference(
+            image_node_path="well/0",
+            source=canonical_source,
+            returned_pixel_identity=pixel_identity,
+            label_node_paths=("well/0/labels/cells",),
         )
 
 
