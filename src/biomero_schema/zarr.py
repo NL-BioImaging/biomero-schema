@@ -327,7 +327,10 @@ class ShallowZarrReference(ZarrContractModel):
     workflow_id: UUID = Field(alias="workflowId")
     transfer_artifact: str = Field(alias="transferArtifact", min_length=1)
     image_node_path: str = Field(alias="imageNodePath")
-    label_node_path: str = Field(alias="labelNodePath")
+    label_node_paths: tuple[str, ...] = Field(
+        alias="labelNodePaths",
+        min_length=1,
+    )
     source: CanonicalZarrSource
     interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
     model: Literal["rfc8-shallow-copy"] = "rfc8-shallow-copy"
@@ -347,10 +350,15 @@ class ShallowZarrReference(ZarrContractModel):
     def validate_image_node_path(cls, value: str) -> str:
         return _validate_relative_path(value, allow_dot=True)
 
-    @field_validator("label_node_path")
+    @field_validator("label_node_paths")
     @classmethod
-    def validate_label_node_path(cls, value: str) -> str:
-        return _validate_relative_path(value, allow_dot=False)
+    def validate_label_node_paths(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        validated = tuple(
+            _validate_relative_path(path, allow_dot=False) for path in value
+        )
+        if len(validated) != len(set(validated)):
+            raise ValueError("labelNodePaths must be unique")
+        return validated
 
     @field_validator("transfer_artifact")
     @classmethod
@@ -368,7 +376,9 @@ class ShallowZarrReference(ZarrContractModel):
             "workflowId": str(self.workflow_id),
             "transferArtifact": self.transfer_artifact,
             "imageNodePath": self.image_node_path,
-            "labelNodePath": self.label_node_path,
+            "labelNodePaths": json.dumps(
+                self.label_node_paths, separators=(",", ":")
+            ),
             "source": json.dumps(
                 self.source.to_dict(), separators=(",", ":"), sort_keys=True
             ),
@@ -388,7 +398,7 @@ class ShallowZarrReference(ZarrContractModel):
             workflow_id=values["workflowId"],
             transfer_artifact=values["transferArtifact"],
             image_node_path=values["imageNodePath"],
-            label_node_path=values["labelNodePath"],
+            label_node_paths=tuple(json.loads(values["labelNodePaths"])),
             source=CanonicalZarrSource.from_dict(json.loads(values["source"])),
             interchange_profile=values["interchangeProfile"],
             model=values["model"],
@@ -402,17 +412,23 @@ class ShallowZarrReference(ZarrContractModel):
         storage_root: str,
         relative_path: str,
         image_node_path: str,
-        label_node_path: str,
+        label_node_paths: tuple[str, ...] | None = None,
     ) -> "ShallowZarrReference":
         """Create a projection reference and require collection membership."""
         matches = [
             image for image in collection.images
             if image.image_node_path == image_node_path
-            and label_node_path in image.label_node_paths
         ]
         if len(matches) != 1:
             raise ValueError(
-                "label projection must identify exactly one shallow collection image"
+                "reference must identify exactly one shallow collection image"
+            )
+        requested_labels = label_node_paths or matches[0].label_node_paths
+        if not requested_labels or not set(requested_labels).issubset(
+            matches[0].label_node_paths
+        ):
+            raise ValueError(
+                "reference labels must belong to the shallow collection image"
             )
         return cls(
             storage_root=storage_root,
@@ -420,7 +436,7 @@ class ShallowZarrReference(ZarrContractModel):
             workflow_id=collection.workflow_id,
             transfer_artifact=collection.transfer_artifact,
             image_node_path=image_node_path,
-            label_node_path=label_node_path,
+            label_node_paths=requested_labels,
             source=matches[0].source,
             interchange_profile=collection.interchange_profile,
             model=collection.model,

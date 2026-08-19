@@ -40,10 +40,12 @@ this package.
   same contract can later represent plate results. This is an internal
   cross-service record, not an OME-NGFF or BILAYERS extension that workflow
   providers must understand.
-- `ShallowZarrReference` locates one retained label node in a managed shallow
-  collection. BIOMERO attaches its string encoding to the corresponding OMERO
-  image with namespace `biomero.zarr.shallow`. Consumers must validate it
-  against `.biomero-shallow.json`; the annotation is an index, not authority.
+- `ShallowZarrReference` locates one image node and its retained labels in a
+  managed shallow collection. BIOMERO attaches its string encoding to the
+  corresponding primary OMERO result object with namespace
+  `biomero.zarr.shallow`. The same reference may be attached to compatibility
+  label projections. Consumers must validate it against
+  `.biomero-shallow.json`; the annotation is an index, not authority.
 
 Each model has its own integer `schema` field. This version is independent of
 `BIOMERO_SCHEMA_VERSION`, which versions workflow descriptors. Contract changes
