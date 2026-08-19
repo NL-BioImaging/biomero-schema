@@ -308,6 +308,42 @@ def test_plate_input_requires_matching_plate_source(
         )
 
 
+def test_derived_plate_input_may_use_original_canonical_plate_source(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    source = canonical_source.model_copy(update={
+        "relative_path": ".processed/Plate-55.g1.ome.zarr",
+        "node_path": "A/1/0",
+        "source_object_type": "Plate",
+        "source_object_id": 55,
+        "pixel_identity": pixel_identity.model_copy(update={
+            "node_path": "A/1/0",
+        }),
+    })
+    plate_source = CanonicalPlateSource(
+        storage_root=source.storage_root,
+        relative_path=source.relative_path,
+        source_object_id=55,
+        source_generation=source.source_generation,
+        interchange_profile=source.interchange_profile,
+        images=(CanonicalPlateImage(
+            image_node_path="A/1/0",
+            source=source,
+        ),),
+    )
+
+    item = CanonicalInput(
+        ordinal=0,
+        selected_object_type="Plate",
+        selected_object_id=901,
+        plate_source=plate_source,
+    )
+
+    assert item.selected_object_id == 901
+    assert item.plate_source.source_object_id == 55
+
+
 def test_canonical_input_rejects_transfer_paths(
     canonical_source: CanonicalZarrSource,
 ) -> None:

@@ -539,10 +539,6 @@ class CanonicalInput(ZarrContractModel):
                 raise ValueError("Plate canonical input requires plateSource")
         elif self.source is not None:
             raise ValueError("Plate canonical input cannot contain image source")
-        if self.plate_source is not None and (
-            self.plate_source.source_object_id != self.selected_object_id
-        ):
-            raise ValueError("plateSource must belong to selected Plate")
         return self
 
 

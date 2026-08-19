@@ -36,7 +36,9 @@ this package.
   selected workflow input. Its optional `transferArtifact` binds the source to
   the exact Zarr store name placed in the workflow input directory. Older
   events without this field remain valid; consumers must then use identity
-  matching and reject ambiguous duplicate identities.
+  matching and reject ambiguous duplicate identities. The selected OMERO ID may
+  differ from the canonical source ID when a derived shallow Image or Plate is
+  reconstructed from its original source.
 - `CanonicalInputManifest` wraps the ordered inputs with their workflow and
   export-task IDs for the event snapshot.
 - `ShallowImageReference` binds an omitted returned image node to its managed
