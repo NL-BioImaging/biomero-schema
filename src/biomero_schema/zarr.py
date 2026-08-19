@@ -314,6 +314,119 @@ class ShallowCollection(ZarrContractModel):
         return self
 
 
+class ShallowZarrReference(ZarrContractModel):
+    """Managed locator attached to one OMERO label-image projection.
+
+    The referenced collection remains the authority. Consumers must load its
+    sidecar and verify that this image/label/source tuple is still present
+    before materializing data.
+    """
+
+    storage_root: str = Field(alias="storageRoot", min_length=1)
+    relative_path: str = Field(alias="relativePath")
+    workflow_id: UUID = Field(alias="workflowId")
+    transfer_artifact: str = Field(alias="transferArtifact", min_length=1)
+    image_node_path: str = Field(alias="imageNodePath")
+    label_node_path: str = Field(alias="labelNodePath")
+    source: CanonicalZarrSource
+    interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
+    model: Literal["rfc8-shallow-copy"] = "rfc8-shallow-copy"
+    schema_version: Literal[1] = Field(default=1, alias="schema")
+
+    @property
+    def schema(self) -> int:
+        return self.schema_version
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+    @field_validator("image_node_path")
+    @classmethod
+    def validate_image_node_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=True)
+
+    @field_validator("label_node_path")
+    @classmethod
+    def validate_label_node_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+    @field_validator("transfer_artifact")
+    @classmethod
+    def validate_transfer_artifact(cls, value: str) -> str:
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("transferArtifact must be one relative artifact name")
+        return value
+
+    def to_annotation_values(self) -> dict[str, str]:
+        """Encode the reference for an OMERO MapAnnotation value map."""
+        return {
+            "schema": str(self.schema),
+            "storageRoot": self.storage_root,
+            "relativePath": self.relative_path,
+            "workflowId": str(self.workflow_id),
+            "transferArtifact": self.transfer_artifact,
+            "imageNodePath": self.image_node_path,
+            "labelNodePath": self.label_node_path,
+            "source": json.dumps(
+                self.source.to_dict(), separators=(",", ":"), sort_keys=True
+            ),
+            "interchangeProfile": self.interchange_profile,
+            "model": self.model,
+        }
+
+    @classmethod
+    def from_annotation_values(
+        cls, values: Mapping[str, str]
+    ) -> "ShallowZarrReference":
+        """Decode and validate an OMERO MapAnnotation value map."""
+        return cls(
+            schema=int(values["schema"]),
+            storage_root=values["storageRoot"],
+            relative_path=values["relativePath"],
+            workflow_id=values["workflowId"],
+            transfer_artifact=values["transferArtifact"],
+            image_node_path=values["imageNodePath"],
+            label_node_path=values["labelNodePath"],
+            source=CanonicalZarrSource.from_dict(json.loads(values["source"])),
+            interchange_profile=values["interchangeProfile"],
+            model=values["model"],
+        )
+
+    @classmethod
+    def from_collection(
+        cls,
+        collection: ShallowCollection,
+        *,
+        storage_root: str,
+        relative_path: str,
+        image_node_path: str,
+        label_node_path: str,
+    ) -> "ShallowZarrReference":
+        """Create a projection reference and require collection membership."""
+        matches = [
+            image for image in collection.images
+            if image.image_node_path == image_node_path
+            and label_node_path in image.label_node_paths
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                "label projection must identify exactly one shallow collection image"
+            )
+        return cls(
+            storage_root=storage_root,
+            relative_path=relative_path,
+            workflow_id=collection.workflow_id,
+            transfer_artifact=collection.transfer_artifact,
+            image_node_path=image_node_path,
+            label_node_path=label_node_path,
+            source=matches[0].source,
+            interchange_profile=collection.interchange_profile,
+            model=collection.model,
+        )
+
+
 __all__ = [
     "CANONICAL_SOURCE_NAMESPACE",
     "CANONICAL_SOURCE_SCHEMA",
@@ -326,4 +439,5 @@ __all__ = [
     "PixelIdentity",
     "ShallowCollection",
     "ShallowImageReference",
+    "ShallowZarrReference",
 ]

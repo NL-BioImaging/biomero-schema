@@ -6,12 +6,14 @@ from uuid import UUID
 
 from biomero_schema.zarr import (
     CANONICAL_SOURCE_NAMESPACE,
+    SHALLOW_COLLECTION_NAMESPACE,
     CanonicalInput,
     CanonicalInputManifest,
     CanonicalZarrSource,
     PixelIdentity,
     ShallowCollection,
     ShallowImageReference,
+    ShallowZarrReference,
 )
 
 
@@ -217,6 +219,62 @@ def test_shallow_reference_rejects_mismatched_identity_node(
             source=canonical_source,
             returned_pixel_identity=pixel_identity,
             label_node_paths=("well/0/labels/cells",),
+        )
+
+
+def test_shallow_zarr_reference_annotation_round_trip(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    collection = ShallowCollection(
+        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        transfer_artifact="Image-3207.ome.zarr",
+        interchange_profile="ngff-0.4-zarr-v2",
+        images=(ShallowImageReference(
+            image_node_path=".",
+            source=canonical_source,
+            returned_pixel_identity=pixel_identity,
+            label_node_paths=("labels/cells",),
+        ),),
+    )
+    reference = ShallowZarrReference.from_collection(
+        collection,
+        storage_root="import-mount-data",
+        relative_path="Project A/.analyzed/run/result.zarr",
+        image_node_path=".",
+        label_node_path="labels/cells",
+    )
+
+    values = reference.to_annotation_values()
+
+    assert SHALLOW_COLLECTION_NAMESPACE == "biomero.zarr.shallow"
+    assert values["labelNodePath"] == "labels/cells"
+    assert ShallowZarrReference.from_annotation_values(values) == reference
+
+
+def test_shallow_zarr_reference_requires_collection_membership(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    collection = ShallowCollection(
+        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        transfer_artifact="Image-3207.ome.zarr",
+        interchange_profile="ngff-0.4-zarr-v2",
+        images=(ShallowImageReference(
+            image_node_path=".",
+            source=canonical_source,
+            returned_pixel_identity=pixel_identity,
+            label_node_paths=("labels/cells",),
+        ),),
+    )
+
+    with pytest.raises(ValueError, match="exactly one"):
+        ShallowZarrReference.from_collection(
+            collection,
+            storage_root="import-mount-data",
+            relative_path="Project A/.analyzed/run/result.zarr",
+            image_node_path=".",
+            label_node_path="labels/nuclei",
         )
 
 
