@@ -26,6 +26,12 @@ this package.
   it to its OMERO source object and pixel identity. It can also encode/decode the
   string values used in an OMERO MapAnnotation with namespace
   `biomero.zarr.source`.
+- `CanonicalPlateSource` carries that contract for every image and label node
+  in a Plate. OMERO persistence uses a compact `CanonicalPlateIndex` plus
+  bounded `CanonicalPlateImageRecord` and `CanonicalPlateLabelRecord`
+  annotations, avoiding PostgreSQL's indexed map-value size limit. The
+  in-memory and event representation remains one `CanonicalPlateSource`, and
+  readers can still accept the earlier monolithic Plate annotation.
 - `CanonicalInput` records which canonical source generation was used for one
   selected workflow input. Its optional `transferArtifact` binds the source to
   the exact Zarr store name placed in the workflow input directory. Older

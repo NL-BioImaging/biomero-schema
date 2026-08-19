@@ -15,6 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 CANONICAL_SOURCE_NAMESPACE = "biomero.zarr.source"
 CANONICAL_SOURCE_SCHEMA = 1
 CANONICAL_PLATE_SOURCE_NAMESPACE = "biomero.zarr.plate-source"
+CANONICAL_PLATE_IMAGE_NAMESPACE = "biomero.zarr.plate-source.image"
+CANONICAL_PLATE_LABEL_NAMESPACE = "biomero.zarr.plate-source.label"
 SHALLOW_COLLECTION_MANIFEST = ".biomero-shallow.json"
 SHALLOW_COLLECTION_NAMESPACE = "biomero.zarr.shallow"
 PIXEL_IDENTITY_METHOD = "iscc-bio/imagewalk"
@@ -338,6 +340,151 @@ class CanonicalPlateSource(ZarrContractModel):
             interchange_profile=values["interchangeProfile"],
             images=tuple(json.loads(values["images"])),
             store_identity=values.get("storeIdentity"),
+        )
+
+
+class CanonicalPlateIndex(ZarrContractModel):
+    """Compact Plate-level index for split OMERO canonical annotations."""
+
+    storage_root: str = Field(alias="storageRoot", min_length=1)
+    relative_path: str = Field(alias="relativePath")
+    source_object_id: int = Field(alias="sourceObjectId", gt=0)
+    source_generation: int = Field(alias="sourceGeneration", gt=0)
+    interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
+    image_count: int = Field(alias="imageCount", gt=0)
+    label_count: int = Field(default=0, alias="labelCount", ge=0)
+    store_identity: str | None = Field(
+        default=None,
+        alias="storeIdentity",
+        pattern=r"^ISCC:",
+    )
+    schema_version: Literal[2] = Field(default=2, alias="schema")
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+    @classmethod
+    def from_source(cls, source: CanonicalPlateSource) -> "CanonicalPlateIndex":
+        return cls(
+            storage_root=source.storage_root,
+            relative_path=source.relative_path,
+            source_object_id=source.source_object_id,
+            source_generation=source.source_generation,
+            interchange_profile=source.interchange_profile,
+            image_count=len(source.images),
+            label_count=sum(len(image.labels) for image in source.images),
+            store_identity=source.store_identity,
+        )
+
+    def to_annotation_values(self) -> dict[str, str]:
+        values = {
+            "schema": str(self.schema_version),
+            "storageRoot": self.storage_root,
+            "relativePath": self.relative_path,
+            "sourceObjectId": str(self.source_object_id),
+            "sourceGeneration": str(self.source_generation),
+            "interchangeProfile": self.interchange_profile,
+            "imageCount": str(self.image_count),
+            "labelCount": str(self.label_count),
+        }
+        if self.store_identity is not None:
+            values["storeIdentity"] = self.store_identity
+        return values
+
+    @classmethod
+    def from_annotation_values(
+        cls, values: Mapping[str, str]
+    ) -> "CanonicalPlateIndex":
+        return cls(
+            schema=int(values["schema"]),
+            storage_root=values["storageRoot"],
+            relative_path=values["relativePath"],
+            source_object_id=int(values["sourceObjectId"]),
+            source_generation=int(values["sourceGeneration"]),
+            interchange_profile=values["interchangeProfile"],
+            image_count=int(values["imageCount"]),
+            label_count=int(values.get("labelCount", "0")),
+            store_identity=values.get("storeIdentity"),
+        )
+
+
+class CanonicalPlateImageRecord(ZarrContractModel):
+    """One bounded image-node record belonging to a compact Plate index."""
+
+    source_object_id: int = Field(alias="sourceObjectId", gt=0)
+    source_generation: int = Field(alias="sourceGeneration", gt=0)
+    image: CanonicalPlateImage
+    schema_version: Literal[1] = Field(default=1, alias="schema")
+
+    @model_validator(mode="after")
+    def validate_image_owner(self) -> "CanonicalPlateImageRecord":
+        if self.image.labels:
+            raise ValueError("split canonical Plate image records cannot contain labels")
+        if self.image.source.source_object_id != self.source_object_id:
+            raise ValueError("Plate image record sourceObjectId must match image source")
+        if self.image.source.source_generation != self.source_generation:
+            raise ValueError("Plate image record generation must match image source")
+        return self
+
+    def to_annotation_values(self) -> dict[str, str]:
+        return {
+            "schema": str(self.schema_version),
+            "sourceObjectId": str(self.source_object_id),
+            "sourceGeneration": str(self.source_generation),
+            "image": json.dumps(
+                self.image.to_dict(), separators=(",", ":"), sort_keys=True
+            ),
+        }
+
+    @classmethod
+    def from_annotation_values(
+        cls, values: Mapping[str, str]
+    ) -> "CanonicalPlateImageRecord":
+        return cls(
+            schema=int(values["schema"]),
+            source_object_id=int(values["sourceObjectId"]),
+            source_generation=int(values["sourceGeneration"]),
+            image=json.loads(values["image"]),
+        )
+
+
+class CanonicalPlateLabelRecord(ZarrContractModel):
+    """One bounded label-node record belonging to a compact Plate index."""
+
+    source_object_id: int = Field(alias="sourceObjectId", gt=0)
+    source_generation: int = Field(alias="sourceGeneration", gt=0)
+    image_node_path: str = Field(alias="imageNodePath")
+    label: ZarrLabelComponent
+    schema_version: Literal[1] = Field(default=1, alias="schema")
+
+    @field_validator("image_node_path")
+    @classmethod
+    def validate_image_node_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+    def to_annotation_values(self) -> dict[str, str]:
+        return {
+            "schema": str(self.schema_version),
+            "sourceObjectId": str(self.source_object_id),
+            "sourceGeneration": str(self.source_generation),
+            "imageNodePath": self.image_node_path,
+            "label": json.dumps(
+                self.label.to_dict(), separators=(",", ":"), sort_keys=True
+            ),
+        }
+
+    @classmethod
+    def from_annotation_values(
+        cls, values: Mapping[str, str]
+    ) -> "CanonicalPlateLabelRecord":
+        return cls(
+            schema=int(values["schema"]),
+            source_object_id=int(values["sourceObjectId"]),
+            source_generation=int(values["sourceGeneration"]),
+            image_node_path=values["imageNodePath"],
+            label=json.loads(values["label"]),
         )
 
 
@@ -767,6 +914,8 @@ class ShallowZarrReference(ZarrContractModel):
 
 
 __all__ = [
+    "CANONICAL_PLATE_IMAGE_NAMESPACE",
+    "CANONICAL_PLATE_LABEL_NAMESPACE",
     "CANONICAL_SOURCE_NAMESPACE",
     "CANONICAL_SOURCE_SCHEMA",
     "CANONICAL_PLATE_SOURCE_NAMESPACE",
@@ -776,6 +925,9 @@ __all__ = [
     "CanonicalInput",
     "CanonicalInputManifest",
     "CanonicalPlateImage",
+    "CanonicalPlateImageRecord",
+    "CanonicalPlateIndex",
+    "CanonicalPlateLabelRecord",
     "CanonicalPlateSource",
     "CanonicalZarrSource",
     "ManagedZarrNode",

@@ -5,12 +5,17 @@ from pydantic import ValidationError
 from uuid import UUID
 
 from biomero_schema.zarr import (
+    CANONICAL_PLATE_IMAGE_NAMESPACE,
+    CANONICAL_PLATE_LABEL_NAMESPACE,
     CANONICAL_SOURCE_NAMESPACE,
     CANONICAL_PLATE_SOURCE_NAMESPACE,
     SHALLOW_COLLECTION_NAMESPACE,
     CanonicalInput,
     CanonicalInputManifest,
     CanonicalPlateImage,
+    CanonicalPlateImageRecord,
+    CanonicalPlateIndex,
+    CanonicalPlateLabelRecord,
     CanonicalPlateSource,
     CanonicalZarrSource,
     ManagedZarrNode,
@@ -224,6 +229,71 @@ def test_canonical_plate_source_round_trips_with_per_image_identities(
     assert CANONICAL_PLATE_SOURCE_NAMESPACE == "biomero.zarr.plate-source"
     assert restored == plate
     assert CanonicalInput.from_dict(canonical_input.to_dict()) == canonical_input
+
+
+def test_canonical_plate_source_splits_into_bounded_omero_records(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    image_path = "A/1/0"
+    plate_source = canonical_source.model_copy(update={
+        "relative_path": ".processed/Plate-55.g1.ome.zarr",
+        "node_path": image_path,
+        "source_object_type": "Plate",
+        "source_object_id": 55,
+        "pixel_identity": pixel_identity.model_copy(update={
+            "node_path": image_path,
+        }),
+    })
+    label = ZarrLabelComponent(
+        logical_node_path=f"{image_path}/labels/nuclei",
+        pixel_identity=pixel_identity.model_copy(update={
+            "node_path": f"{image_path}/labels/nuclei",
+            "role": "label",
+        }),
+        source=ManagedZarrNode(
+            storage_root="group-5-data",
+            relative_path=".processed/Plate-55.g1.ome.zarr",
+            node_path=f"{image_path}/labels/nuclei",
+        ),
+    )
+    image = CanonicalPlateImage(
+        image_node_path=image_path,
+        source=plate_source,
+        labels=(label,),
+    )
+    plate = CanonicalPlateSource(
+        storage_root="group-5-data",
+        relative_path=".processed/Plate-55.g1.ome.zarr",
+        source_object_id=55,
+        source_generation=1,
+        interchange_profile="ngff-0.4-zarr-v2",
+        images=(image,),
+    )
+    index = CanonicalPlateIndex.from_source(plate)
+    image_record = CanonicalPlateImageRecord(
+        source_object_id=55,
+        source_generation=1,
+        image=image.model_copy(update={"labels": ()}),
+    )
+    label_record = CanonicalPlateLabelRecord(
+        source_object_id=55,
+        source_generation=1,
+        image_node_path=image_path,
+        label=label,
+    )
+
+    assert CANONICAL_PLATE_IMAGE_NAMESPACE.endswith(".image")
+    assert CANONICAL_PLATE_LABEL_NAMESPACE.endswith(".label")
+    assert CanonicalPlateIndex.from_annotation_values(
+        index.to_annotation_values()
+    ) == index
+    assert CanonicalPlateImageRecord.from_annotation_values(
+        image_record.to_annotation_values()
+    ) == image_record
+    assert CanonicalPlateLabelRecord.from_annotation_values(
+        label_record.to_annotation_values()
+    ) == label_record
 
 
 def test_plate_input_requires_matching_plate_source(
