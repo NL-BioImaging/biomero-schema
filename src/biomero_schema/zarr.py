@@ -192,6 +192,52 @@ class CanonicalZarrSource(ZarrContractModel):
         )
 
 
+class ManagedZarrNode(ZarrContractModel):
+    """Stable managed locator for one physical NGFF image or label node."""
+
+    storage_root: str = Field(alias="storageRoot", min_length=1)
+    relative_path: str = Field(alias="relativePath")
+    node_path: str = Field(alias="nodePath")
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+    @field_validator("node_path")
+    @classmethod
+    def validate_node_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=True)
+
+
+class ZarrLabelComponent(ZarrContractModel):
+    """One logical label layer and, when inherited, its managed source.
+
+    ``source`` is absent only while the label pixels are stored locally in the
+    collection that owns this record. A workflow input snapshot always uses a
+    managed source because its reconstructed transfer artifact is temporary.
+    """
+
+    logical_node_path: str = Field(alias="logicalNodePath")
+    pixel_identity: PixelIdentity = Field(alias="pixelIdentity")
+    source: ManagedZarrNode | None = None
+
+    @field_validator("logical_node_path")
+    @classmethod
+    def validate_logical_node_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+    @model_validator(mode="after")
+    def validate_label_identity(self) -> "ZarrLabelComponent":
+        if self.pixel_identity.role != "label":
+            raise ValueError("label component pixelIdentity must describe a label")
+        if self.pixel_identity.node_path != self.logical_node_path:
+            raise ValueError(
+                "label component pixelIdentity.nodePath must equal logicalNodePath"
+            )
+        return self
+
+
 class CanonicalInput(ZarrContractModel):
     """One selected OMERO object and the exact canonical generation exported."""
 
@@ -205,6 +251,7 @@ class CanonicalInput(ZarrContractModel):
         default=None,
         alias="transferArtifact",
     )
+    labels: tuple[ZarrLabelComponent, ...] = Field(default_factory=tuple)
     schema_version: Literal[1] = Field(default=1, alias="schema")
 
     @property
@@ -220,6 +267,15 @@ class CanonicalInput(ZarrContractModel):
         if not value or value in {".", ".."} or "/" in value or "\\" in value:
             raise ValueError("transferArtifact must be one relative artifact name")
         return value
+
+    @model_validator(mode="after")
+    def validate_managed_labels(self) -> "CanonicalInput":
+        paths = [label.logical_node_path for label in self.labels]
+        if len(paths) != len(set(paths)):
+            raise ValueError("canonical input label paths must be unique")
+        if any(label.source is None for label in self.labels):
+            raise ValueError("canonical input labels require managed sources")
+        return self
 
 
 class CanonicalInputManifest(ZarrContractModel):
@@ -255,6 +311,10 @@ class ShallowImageReference(ZarrContractModel):
         alias="labelNodePaths",
         min_length=1,
     )
+    label_components: tuple[ZarrLabelComponent, ...] = Field(
+        default_factory=tuple,
+        alias="labelComponents",
+    )
 
     @field_validator("image_node_path")
     @classmethod
@@ -282,6 +342,17 @@ class ShallowImageReference(ZarrContractModel):
             )
         if self.returned_pixel_identity.role != "image":
             raise ValueError("returnedPixelIdentity must describe an image")
+        if self.label_components:
+            component_paths = [
+                component.logical_node_path
+                for component in self.label_components
+            ]
+            if len(component_paths) != len(set(component_paths)):
+                raise ValueError("shallow label component paths must be unique")
+            if set(component_paths) != set(self.label_node_paths):
+                raise ValueError(
+                    "labelComponents must describe every labelNodePath exactly once"
+                )
         return self
 
 
@@ -452,8 +523,10 @@ __all__ = [
     "CanonicalInput",
     "CanonicalInputManifest",
     "CanonicalZarrSource",
+    "ManagedZarrNode",
     "PixelIdentity",
     "ShallowCollection",
     "ShallowImageReference",
     "ShallowZarrReference",
+    "ZarrLabelComponent",
 ]

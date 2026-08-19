@@ -10,10 +10,12 @@ from biomero_schema.zarr import (
     CanonicalInput,
     CanonicalInputManifest,
     CanonicalZarrSource,
+    ManagedZarrNode,
     PixelIdentity,
     ShallowCollection,
     ShallowImageReference,
     ShallowZarrReference,
+    ZarrLabelComponent,
 )
 
 
@@ -119,6 +121,57 @@ def test_canonical_input_accepts_legacy_payload_without_transfer_artifact(
     })
 
     assert item.transfer_artifact is None
+    assert item.labels == ()
+
+
+def test_canonical_input_records_managed_label_snapshot(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    label_identity = pixel_identity.model_copy(update={
+        "node_path": "labels/nuclei",
+        "role": "label",
+    })
+    label = ZarrLabelComponent(
+        logical_node_path="labels/nuclei",
+        pixel_identity=label_identity,
+        source=ManagedZarrNode(
+            storage_root="import-mount-data",
+            relative_path="Project A/.analyzed/first/result.zarr",
+            node_path="labels/nuclei",
+        ),
+    )
+    item = CanonicalInput(
+        ordinal=0,
+        selected_object_type="Image",
+        selected_object_id=3207,
+        source=canonical_source,
+        transfer_artifact="result.zarr",
+        labels=(label,),
+    )
+
+    assert CanonicalInput.from_dict(item.to_dict()) == item
+    assert item.to_dict()["labels"][0]["logicalNodePath"] == "labels/nuclei"
+
+
+def test_canonical_input_rejects_unmanaged_local_label(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    with pytest.raises(ValidationError, match="require managed sources"):
+        CanonicalInput(
+            ordinal=0,
+            selected_object_type="Image",
+            selected_object_id=3207,
+            source=canonical_source,
+            labels=(ZarrLabelComponent(
+                logical_node_path="labels/nuclei",
+                pixel_identity=pixel_identity.model_copy(update={
+                    "node_path": "labels/nuclei",
+                    "role": "label",
+                }),
+            ),),
+        )
 
 
 def test_canonical_input_rejects_transfer_paths(
@@ -207,6 +260,73 @@ def test_shallow_collection_wire_round_trip(
         "labels/nuclei",
     ]
     assert ShallowCollection.from_dict(wire) == collection
+
+
+def test_shallow_collection_tracks_local_and_inherited_labels(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    nuclei_identity = pixel_identity.model_copy(update={
+        "node_path": "labels/nuclei",
+        "role": "label",
+    })
+    cells_identity = pixel_identity.model_copy(update={
+        "node_path": "labels/cells",
+        "role": "label",
+        "instance_code": "ISCC:ICELLS",
+    })
+    collection = ShallowCollection(
+        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        transfer_artifact="result.zarr",
+        interchange_profile="ngff-0.4-zarr-v2",
+        images=(ShallowImageReference(
+            image_node_path=".",
+            source=canonical_source,
+            returned_pixel_identity=pixel_identity,
+            label_node_paths=("labels/nuclei", "labels/cells"),
+            label_components=(
+                ZarrLabelComponent(
+                    logical_node_path="labels/nuclei",
+                    pixel_identity=nuclei_identity,
+                    source=ManagedZarrNode(
+                        storage_root="import-mount-data",
+                        relative_path="Project A/.analyzed/first/result.zarr",
+                        node_path="labels/nuclei",
+                    ),
+                ),
+                ZarrLabelComponent(
+                    logical_node_path="labels/cells",
+                    pixel_identity=cells_identity,
+                ),
+            ),
+        ),),
+    )
+
+    restored = ShallowCollection.from_dict(collection.to_dict())
+
+    assert restored == collection
+    assert restored.images[0].label_components[0].source is not None
+    assert restored.images[0].label_components[1].source is None
+
+
+def test_shallow_collection_requires_component_path_coverage(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    with pytest.raises(ValidationError, match="every labelNodePath"):
+        ShallowImageReference(
+            image_node_path=".",
+            source=canonical_source,
+            returned_pixel_identity=pixel_identity,
+            label_node_paths=("labels/nuclei", "labels/cells"),
+            label_components=(ZarrLabelComponent(
+                logical_node_path="labels/nuclei",
+                pixel_identity=pixel_identity.model_copy(update={
+                    "node_path": "labels/nuclei",
+                    "role": "label",
+                }),
+            ),),
+        )
 
 
 def test_shallow_reference_rejects_mismatched_identity_node(
