@@ -507,6 +507,136 @@ class ShallowCollection(ZarrContractModel):
         return self
 
 
+class ShallowPlateReference(ZarrContractModel):
+    """Managed locator attached to a derived OMERO shallow Plate.
+
+    The compact Plate-level annotation indexes the authoritative collection
+    manifest without repeating every per-image pixel identity in OMERO.
+    Consumers must load and validate that manifest before reconstruction.
+    """
+
+    storage_root: str = Field(alias="storageRoot", min_length=1)
+    relative_path: str = Field(alias="relativePath")
+    workflow_id: UUID = Field(alias="workflowId")
+    transfer_artifact: str = Field(alias="transferArtifact", min_length=1)
+    source_object_id: int = Field(alias="sourceObjectId", gt=0)
+    source_generation: int = Field(alias="sourceGeneration", gt=0)
+    image_node_count: int = Field(alias="imageNodeCount", gt=0)
+    interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
+    model: Literal["rfc8-shallow-copy"] = "rfc8-shallow-copy"
+    schema_version: Literal[1] = Field(default=1, alias="schema")
+
+    @property
+    def schema(self) -> int:
+        return self.schema_version
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+    @field_validator("transfer_artifact")
+    @classmethod
+    def validate_transfer_artifact(cls, value: str) -> str:
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("transferArtifact must be one relative artifact name")
+        return value
+
+    def to_annotation_values(self) -> dict[str, str]:
+        return {
+            "schema": str(self.schema),
+            "storageRoot": self.storage_root,
+            "relativePath": self.relative_path,
+            "workflowId": str(self.workflow_id),
+            "transferArtifact": self.transfer_artifact,
+            "sourceObjectId": str(self.source_object_id),
+            "sourceGeneration": str(self.source_generation),
+            "imageNodeCount": str(self.image_node_count),
+            "interchangeProfile": self.interchange_profile,
+            "model": self.model,
+        }
+
+    @classmethod
+    def from_annotation_values(
+        cls, values: Mapping[str, str]
+    ) -> "ShallowPlateReference":
+        return cls(
+            schema=int(values["schema"]),
+            storage_root=values["storageRoot"],
+            relative_path=values["relativePath"],
+            workflow_id=values["workflowId"],
+            transfer_artifact=values["transferArtifact"],
+            source_object_id=int(values["sourceObjectId"]),
+            source_generation=int(values["sourceGeneration"]),
+            image_node_count=int(values["imageNodeCount"]),
+            interchange_profile=values["interchangeProfile"],
+            model=values["model"],
+        )
+
+    @classmethod
+    def from_collection(
+        cls,
+        collection: ShallowCollection,
+        *,
+        storage_root: str,
+        relative_path: str,
+    ) -> "ShallowPlateReference":
+        sources = [image.source for image in collection.images]
+        if any(source.source_object_type != "Plate" for source in sources):
+            raise ValueError("shallow Plate reference requires Plate sources")
+        first = sources[0]
+        if any(
+            source.source_object_id != first.source_object_id
+            or source.source_generation != first.source_generation
+            or source.storage_root != first.storage_root
+            or source.relative_path != first.relative_path
+            or source.interchange_profile != first.interchange_profile
+            for source in sources[1:]
+        ):
+            raise ValueError("shallow Plate images require one canonical Plate")
+        return cls(
+            storage_root=storage_root,
+            relative_path=relative_path,
+            workflow_id=collection.workflow_id,
+            transfer_artifact=collection.transfer_artifact,
+            source_object_id=first.source_object_id,
+            source_generation=first.source_generation,
+            image_node_count=len(collection.images),
+            interchange_profile=collection.interchange_profile,
+            model=collection.model,
+        )
+
+
+class ZarrImportOptions(ZarrContractModel):
+    """Optional per-order controls for registering a BIOMERO Zarr result."""
+
+    plate_pixel_source: Literal["source", "label"] = Field(
+        default="source",
+        alias="platePixelSource",
+    )
+    plate_label_name: str | None = Field(
+        default=None,
+        alias="plateLabelName",
+    )
+    schema_version: Literal[1] = Field(default=1, alias="schema")
+
+    @model_validator(mode="after")
+    def validate_plate_label(self) -> "ZarrImportOptions":
+        if self.plate_pixel_source == "label":
+            if not self.plate_label_name:
+                raise ValueError(
+                    "plateLabelName is required for label Plate pixels"
+                )
+            _validate_relative_path(self.plate_label_name, allow_dot=False)
+            if "/" in self.plate_label_name:
+                raise ValueError("plateLabelName must be one NGFF label name")
+        elif self.plate_label_name is not None:
+            raise ValueError(
+                "plateLabelName is only valid for label Plate pixels"
+            )
+        return self
+
+
 class ShallowZarrReference(ZarrContractModel):
     """Managed locator attached to one OMERO label-image projection.
 
@@ -652,6 +782,8 @@ __all__ = [
     "PixelIdentity",
     "ShallowCollection",
     "ShallowImageReference",
+    "ShallowPlateReference",
     "ShallowZarrReference",
+    "ZarrImportOptions",
     "ZarrLabelComponent",
 ]

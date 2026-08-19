@@ -23,7 +23,9 @@ from biomero_schema.zarr import (
     PixelIdentity,
     ShallowCollection,
     ShallowImageReference,
+    ShallowPlateReference,
     ShallowZarrReference,
+    ZarrImportOptions,
     ZarrLabelComponent,
 )
 
@@ -45,6 +47,8 @@ __all__ = [
     "PixelIdentity",
     "ShallowCollection",
     "ShallowImageReference",
+    "ShallowPlateReference",
     "ShallowZarrReference",
+    "ZarrImportOptions",
     "ZarrLabelComponent",
 ]

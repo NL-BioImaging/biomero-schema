@@ -17,7 +17,9 @@ from biomero_schema.zarr import (
     PixelIdentity,
     ShallowCollection,
     ShallowImageReference,
+    ShallowPlateReference,
     ShallowZarrReference,
+    ZarrImportOptions,
     ZarrLabelComponent,
 )
 
@@ -466,3 +468,67 @@ def test_json_schema_is_independent_of_workflow_schema() -> None:
     assert schema["title"] == "CanonicalZarrSource"
     assert "workflow" not in str(schema).lower()
     assert schema["properties"]["sourceObjectType"]["enum"] == ["Image", "Plate"]
+
+
+def test_shallow_plate_reference_round_trip(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+) -> None:
+    plate_source = canonical_source.model_copy(update={
+        "source_object_type": "Plate",
+        "source_object_id": 55,
+        "node_path": "A/1/0",
+        "relative_path": ".processed/Plate-55.g1.ome.zarr",
+    })
+    image_identity = pixel_identity.model_copy(update={
+        "node_path": "A/1/0",
+    })
+    label_identity = pixel_identity.model_copy(update={
+        "node_path": "A/1/0/labels/nuclei",
+        "role": "label",
+        "iscc_code": "ISCC:KLABEL",
+        "data_code": "ISCC:DLABEL",
+        "instance_code": "ISCC:ILABEL",
+    })
+    collection = ShallowCollection(
+        workflow_id=UUID("00000000-0000-0000-0000-000000000123"),
+        transfer_artifact="plate.ome.zarr",
+        interchange_profile="ngff-0.4-zarr-v2",
+        images=(ShallowImageReference(
+            image_node_path="A/1/0",
+            source=plate_source,
+            returned_pixel_identity=image_identity,
+            label_node_paths=("A/1/0/labels/nuclei",),
+            label_components=(ZarrLabelComponent(
+                logical_node_path="A/1/0/labels/nuclei",
+                pixel_identity=label_identity,
+            ),),
+        ),),
+    )
+
+    reference = ShallowPlateReference.from_collection(
+        collection,
+        storage_root="group-3-data",
+        relative_path=".analyzed/run/plate.ome.zarr",
+    )
+
+    assert reference.source_object_id == 55
+    assert reference.image_node_count == 1
+    assert ShallowPlateReference.from_annotation_values(
+        reference.to_annotation_values()
+    ) == reference
+
+
+def test_zarr_import_options_require_label_for_label_plate() -> None:
+    assert ZarrImportOptions().to_dict() == {
+        "platePixelSource": "source",
+        "plateLabelName": None,
+        "schema": 1,
+    }
+    options = ZarrImportOptions(
+        plate_pixel_source="label",
+        plate_label_name="labels_nuclei",
+    )
+    assert ZarrImportOptions.from_dict(options.to_dict()) == options
+    with pytest.raises(ValueError, match="plateLabelName"):
+        ZarrImportOptions(plate_pixel_source="label")

@@ -46,6 +46,13 @@ this package.
   `biomero.zarr.shallow`. The same reference may be attached to compatibility
   label projections. Consumers must validate it against
   `.biomero-shallow.json`; the annotation is an index, not authority.
+- `ShallowPlateReference` is the compact Plate-level equivalent. It points to
+  the collection and canonical source generation without copying every
+  per-image identity into an OMERO MapAnnotation.
+- `ZarrImportOptions` carries optional per-order registration behavior between
+  Import Results and BIOMERO.importer. Its default uses canonical source pixels;
+  `platePixelSource=label` requires one concrete label name and creates a
+  label-backed Plate view without copying the label arrays.
 
 Each model has its own integer `schema` field. This version is independent of
 `BIOMERO_SCHEMA_VERSION`, which versions workflow descriptors. Contract changes
