@@ -27,7 +27,10 @@ this package.
   string values used in an OMERO MapAnnotation with namespace
   `biomero.zarr.source`.
 - `CanonicalInput` records which canonical source generation was used for one
-  selected workflow input.
+  selected workflow input. Its optional `transferArtifact` binds the source to
+  the exact Zarr store name placed in the workflow input directory. Older
+  events without this field remain valid; consumers must then use identity
+  matching and reject ambiguous duplicate identities.
 - `CanonicalInputManifest` wraps the ordered inputs with their workflow and
   export-task IDs for the event snapshot and task-side recovery file.
 

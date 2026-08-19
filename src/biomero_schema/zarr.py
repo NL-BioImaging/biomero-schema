@@ -199,12 +199,25 @@ class CanonicalInput(ZarrContractModel):
     )
     selected_object_id: int = Field(alias="selectedObjectId", gt=0)
     source: CanonicalZarrSource
+    transfer_artifact: str | None = Field(
+        default=None,
+        alias="transferArtifact",
+    )
     schema_version: Literal[1] = Field(default=1, alias="schema")
 
     @property
     def schema(self) -> int:
         """Wire schema version (kept distinct from workflow schema versions)."""
         return self.schema_version
+
+    @field_validator("transfer_artifact")
+    @classmethod
+    def validate_transfer_artifact(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value or value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("transferArtifact must be one relative artifact name")
+        return value
 
 
 class CanonicalInputManifest(ZarrContractModel):

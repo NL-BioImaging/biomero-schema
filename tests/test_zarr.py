@@ -87,6 +87,7 @@ def test_canonical_input_manifest_is_json_portable(
         selected_object_type="Image",
         selected_object_id=3207,
         source=canonical_source,
+        transfer_artifact="Image-3207.ome.zarr",
     )
     manifest = CanonicalInputManifest(
         workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
@@ -98,7 +99,35 @@ def test_canonical_input_manifest_is_json_portable(
 
     assert wire["workflowId"] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     assert wire["inputs"][0]["selectedObjectId"] == 3207
+    assert wire["inputs"][0]["transferArtifact"] == "Image-3207.ome.zarr"
     assert CanonicalInputManifest.from_dict(wire) == manifest
+
+
+def test_canonical_input_accepts_legacy_payload_without_transfer_artifact(
+    canonical_source: CanonicalZarrSource,
+) -> None:
+    item = CanonicalInput.from_dict({
+        "ordinal": 0,
+        "selectedObjectType": "Image",
+        "selectedObjectId": 3207,
+        "source": canonical_source.to_dict(),
+        "schema": 1,
+    })
+
+    assert item.transfer_artifact is None
+
+
+def test_canonical_input_rejects_transfer_paths(
+    canonical_source: CanonicalZarrSource,
+) -> None:
+    with pytest.raises(ValidationError, match="transferArtifact"):
+        CanonicalInput(
+            ordinal=0,
+            selected_object_type="Image",
+            selected_object_id=3207,
+            source=canonical_source,
+            transfer_artifact="data/in/Image-3207.ome.zarr",
+        )
 
 
 def test_canonical_input_manifest_rejects_duplicate_ordinals(
