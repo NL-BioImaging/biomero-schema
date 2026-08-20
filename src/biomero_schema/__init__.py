@@ -7,6 +7,13 @@ except PackageNotFoundError:
     __version__ = "unknown"
 
 from biomero_schema.models import BIOMERO_SCHEMA_VERSION
+from biomero_schema.imports import (
+    IMPORT_OPTIONS_ENVELOPE_SCHEMA,
+    SHALLOW_ZARR_OPERATION,
+    ImportOptionsEnvelope,
+    ShallowZarrImportOperation,
+    parse_import_options,
+)
 from biomero_schema.zarr import (
     CANONICAL_PLATE_IMAGE_NAMESPACE,
     CANONICAL_PLATE_LABEL_NAMESPACE,
@@ -37,6 +44,11 @@ from biomero_schema.zarr import (
 __all__ = [
     "__version__",
     "BIOMERO_SCHEMA_VERSION",
+    "IMPORT_OPTIONS_ENVELOPE_SCHEMA",
+    "SHALLOW_ZARR_OPERATION",
+    "ImportOptionsEnvelope",
+    "ShallowZarrImportOperation",
+    "parse_import_options",
     "CANONICAL_PLATE_IMAGE_NAMESPACE",
     "CANONICAL_PLATE_LABEL_NAMESPACE",
     "CANONICAL_SOURCE_NAMESPACE",

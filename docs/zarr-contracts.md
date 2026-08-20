@@ -1,5 +1,22 @@
 # Zarr interchange contracts
 
+## Import lifecycle envelope
+
+Importer orchestration is intentionally separate from workflow descriptors
+and from stored Zarr manifests. `ImportOptionsEnvelope` schema 2 carries the
+registration controls and an ordered list of optional native lifecycle
+operations in the existing importer order `import_options` field.
+
+The first operation, `biomero.shallow-zarr`, requests importer-owned Zarr
+comparison and fail-safe shallow normalization after any converter/container
+preprocessing and before OMERO registration. It carries the exact
+`CanonicalInputManifest`; uncertain or changed data is kept full. Identity
+parallelism is importer deployment configuration and is not client input.
+
+Legacy flat schema-1 `ZarrImportOptions` payloads and empty options upcast to a
+schema-2 envelope with no operations. They therefore preserve the established
+import path.
+
 The models in `biomero_schema.zarr` describe records exchanged between
 BIOMERO-owned services when locating canonical Zarr data, recording the exact
 input to a run, and comparing pixel identities. They are deliberately separate
