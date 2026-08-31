@@ -10,6 +10,7 @@ from biomero_schema.zarr import (
     CANONICAL_SOURCE_NAMESPACE,
     CANONICAL_PLATE_SOURCE_NAMESPACE,
     SHALLOW_COLLECTION_NAMESPACE,
+    TRANSFER_INPUT_MARKER,
     CanonicalInput,
     CanonicalInputManifest,
     CanonicalPlateImage,
@@ -27,6 +28,10 @@ from biomero_schema.zarr import (
     ZarrImportOptions,
     ZarrLabelComponent,
 )
+
+
+def test_transfer_input_marker_has_reserved_name():
+    assert TRANSFER_INPUT_MARKER == ".biomero-input.json"
 
 
 @pytest.fixture

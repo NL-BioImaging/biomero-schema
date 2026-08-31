@@ -19,6 +19,7 @@ CANONICAL_PLATE_IMAGE_NAMESPACE = "biomero.zarr.plate-source.image"
 CANONICAL_PLATE_LABEL_NAMESPACE = "biomero.zarr.plate-source.label"
 SHALLOW_COLLECTION_MANIFEST = ".biomero-shallow.json"
 SHALLOW_COLLECTION_NAMESPACE = "biomero.zarr.shallow"
+TRANSFER_INPUT_MARKER = ".biomero-input.json"
 PIXEL_IDENTITY_METHOD = "iscc-bio/imagewalk"
 
 
@@ -918,6 +919,7 @@ __all__ = [
     "PIXEL_IDENTITY_METHOD",
     "SHALLOW_COLLECTION_MANIFEST",
     "SHALLOW_COLLECTION_NAMESPACE",
+    "TRANSFER_INPUT_MARKER",
     "CanonicalInput",
     "CanonicalInputManifest",
     "CanonicalPlateImage",

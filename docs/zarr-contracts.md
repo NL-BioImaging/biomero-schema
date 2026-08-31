@@ -58,6 +58,10 @@ this package.
   reconstructed from its original source.
 - `CanonicalInputManifest` wraps the ordered inputs with their workflow and
   export-task IDs for the event snapshot.
+- `TRANSFER_INPUT_MARKER` reserves `.biomero-input.json` for one serialized
+  `CanonicalInput` written into a temporary workflow-transfer Zarr. The event
+  snapshot remains authoritative; importers use the marker only to bind a
+  renamed result to one expected input before verifying its pixel identity.
 - `ShallowImageReference` binds an omitted returned image node to its managed
   canonical source, verified returned-pixel identity, and retained label nodes.
 - `ShallowCollection` is the small RFC-8-shaped BIOMERO storage record written
