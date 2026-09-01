@@ -3,6 +3,10 @@
 This package contains Pydantic schemas shared by BIOMERO services. Schemas can
 be exported as JSON Schema.
 
+Full documentation, including the workflow descriptor, cross-service Zarr
+contracts, and a field-by-field PixelIdentity reference, is published at
+[nl-bioimaging.github.io/biomero-schema](https://nl-bioimaging.github.io/biomero-schema/).
+
 A CLI tool is included to validate and parse workflow descriptor files.
 
 Two schema areas are kept separate:
@@ -29,6 +33,9 @@ pixi shell
 ```
 
 Or use `pip install -e .` (or equivalent) in a virtual environment.
+
+To build or preview the documentation locally, see
+[Contributing to the docs](docs/contributing.md).
 
 ## Usage
 

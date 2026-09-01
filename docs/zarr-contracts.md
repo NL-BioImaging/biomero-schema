@@ -1,5 +1,10 @@
 # Zarr interchange contracts
 
+This page maps the contract family and its responsibilities. For the meaning
+of every ISCC and semantic guard field, see the dedicated
+[Pixel identity reference](pixel-identity.md). For operation ordering and
+legacy upcasting, see [Import lifecycle](import-lifecycle.md).
+
 ## Import lifecycle envelope
 
 Importer orchestration is intentionally separate from workflow descriptors
@@ -87,6 +92,9 @@ Each model has its own integer `schema` field. This version is independent of
 `BIOMERO_SCHEMA_VERSION`, which versions workflow descriptors. Contract changes
 must remain backward compatible within a schema version; breaking wire changes
 require a new schema version and an explicit migration in consumers.
+
+See [Versioning and compatibility](versioning.md) for all version domains and
+the fail-safe compatibility rules.
 
 ## Example
 
