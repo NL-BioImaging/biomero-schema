@@ -6,15 +6,16 @@ JSON Schema, and a command-line validator.
 
 The package has two deliberately separate responsibilities:
 
-- **Workflow descriptors** describe portable workflows, their containers,
-  inputs, outputs, parameters, resources, and command line.
+- **Workflow descriptors** provide the normalized model into which BIOMERO
+  converts supported BIAFLOWS and BILAYERS provider descriptors.
 - **Cross-service contracts** describe BIOMERO-owned hand-offs, including
   canonical Zarr sources, pixel identities, shallow Zarr collections, and
   importer lifecycle operations.
 
-This separation matters. A FAIR workflow provider should only need the
-workflow descriptor. BIOMERO's storage optimization records are internal
-contracts between services and are not additions to BILAYERS or OME-NGFF.
+This separation matters. A FAIR workflow provider can continue using the
+supported external BIAFLOWS or BILAYERS specification. BIOMERO's normalized
+model and storage optimization records are internal contracts between services
+and are not additions to BILAYERS or OME-NGFF.
 
 ## Choose a starting point
 

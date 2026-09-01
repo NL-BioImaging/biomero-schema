@@ -21,7 +21,12 @@ pixi run test
 pixi run json-schema
 ```
 
-## Validate a workflow descriptor
+## Validate a normalized workflow descriptor
+
+The CLI accepts the native `WorkflowSchema` representation. The `biomero`
+runtime performs BIAFLOWS and BILAYERS conversion before this validation step;
+workflow providers should validate their source file against its upstream
+format as well.
 
 ```bash
 biomero-schema validate workflow.json
