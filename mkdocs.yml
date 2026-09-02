@@ -1,0 +1,75 @@
+site_name: BIOMERO Schema
+site_description: Versioned workflow and cross-service contracts for BIOMERO
+site_url: https://nl-bioimaging.github.io/biomero-schema/
+repo_url: https://github.com/NL-BioImaging/biomero-schema
+repo_name: NL-BioImaging/biomero-schema
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_source: false
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Workflow descriptors: workflow-descriptors.md
+  - Cross-service contracts:
+      - Overview: contracts/index.md
+      - Zarr contracts: zarr-contracts.md
+      - Pixel identity: pixel-identity.md
+      - Import lifecycle: import-lifecycle.md
+      - Versioning and compatibility: versioning.md
+  - Python API:
+      - Workflow models: api/workflow.md
+      - Zarr models: api/zarr.md
+      - Import lifecycle models: api/imports.md
+  - Contributing to the docs: contributing.md
