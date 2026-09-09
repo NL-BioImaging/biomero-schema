@@ -7,6 +7,7 @@ do not implement storage mutation, conversion, or OMERO registration.
 from typing import Any, Literal, Mapping
 
 from pydantic import Field, model_validator
+from biomero_schema.shallower import RemoteShallowReceipt
 
 from biomero_schema.zarr import (
     CanonicalInputManifest,
@@ -42,6 +43,9 @@ class ShallowZarrImportOperation(ZarrContractModel):
         alias="plateLabelName",
     )
     schema_version: Literal[1] = Field(default=1, alias="schema")
+    remote_receipts: tuple[RemoteShallowReceipt, ...] = Field(
+        default_factory=tuple, alias="remoteReceipts",
+    )
 
     @model_validator(mode="after")
     def validate_plate_preview(self) -> "ShallowZarrImportOperation":
