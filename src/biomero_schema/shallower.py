@@ -3,9 +3,12 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
-from .zarr import CanonicalInputManifest, ShallowCollection, ZarrContractModel
+from .zarr import (
+    CanonicalInputManifest, ShallowCollection, ZarrContractModel,
+    _validate_relative_path,
+)
 
 SHALLOW_OPERATION_REPORT = ".biomero-shallow-report.json"
 SHALLOW_BATCH_REPORT = ".biomero-shallow-batch.json"
@@ -28,6 +31,8 @@ class ShallowOperationReport(ZarrContractModel):
     timings: dict[str, float]
     slurm_job_id: str | None = Field(default=None, alias="slurmJobId")
     task_id: UUID | None = Field(default=None, alias="taskId")
+    bytes_before: int | None = Field(default=None, alias="bytesBefore", ge=0)
+    bytes_after: int | None = Field(default=None, alias="bytesAfter", ge=0)
 
     @model_validator(mode="after")
     def validate_terminal(self):
@@ -55,3 +60,17 @@ class RemoteShallowReceipt(ZarrContractModel):
     artifact_path: str = Field(alias="artifactPath")
     slurm_job_id: str = Field(alias="slurmJobId", pattern=r"^[1-9][0-9]*$")
     task_id: UUID = Field(alias="taskId")
+
+    @field_validator("artifact_path")
+    @classmethod
+    def validate_path(cls, value):
+        return _validate_relative_path(value, allow_dot=False)
+
+
+class ShallowBatchReport(ZarrContractModel):
+    schema_version: Literal[1] = Field(alias="schema")
+    canonical_inputs: CanonicalInputManifest = Field(alias="canonicalInputs")
+    image: str
+    tool_version: str = Field(alias="toolVersion")
+    result: Literal["complete"]
+    receipts: tuple[RemoteShallowReceipt, ...]

@@ -77,6 +77,13 @@ class ImportOptionsEnvelope(ZarrContractModel):
         alias="schema",
     )
 
+    def to_dict(self):
+        value = super().to_dict()
+        for operation in value["operations"]:
+            if not operation.get("remoteReceipts"):
+                operation.pop("remoteReceipts", None)
+        return value
+
     @model_validator(mode="after")
     def validate_unique_operations(self) -> "ImportOptionsEnvelope":
         kinds = [operation.kind for operation in self.operations]
