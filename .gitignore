@@ -8,6 +8,7 @@ _ref/
 uv.lock
 pyproject.toml
 .python-version
+src/biomero_schema/_version.py
 
 
 # Byte-compiled / optimized / DLL files
