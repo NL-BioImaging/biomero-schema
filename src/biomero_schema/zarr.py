@@ -646,8 +646,6 @@ class ShallowCollection(ZarrContractModel):
         paths = [image.image_node_path for image in self.images]
         if len(paths) != len(set(paths)):
             raise ValueError("shallow image node paths must be unique")
-        if not any(image.label_node_paths for image in self.images):
-            raise ValueError("shallow collection must retain or reference a label")
         return self
 
 
@@ -782,7 +780,7 @@ class ZarrImportOptions(ZarrContractModel):
 
 
 class ShallowZarrReference(ZarrContractModel):
-    """Managed locator attached to one OMERO label-image projection.
+    """Managed locator attached to one OMERO image or label-image projection.
 
     The referenced collection remains the authority. Consumers must load its
     sidecar and verify that this image/label/source tuple is still present
@@ -796,7 +794,6 @@ class ShallowZarrReference(ZarrContractModel):
     image_node_path: str = Field(alias="imageNodePath")
     label_node_paths: tuple[str, ...] = Field(
         alias="labelNodePaths",
-        min_length=1,
     )
     source: CanonicalZarrSource
     interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
@@ -890,8 +887,8 @@ class ShallowZarrReference(ZarrContractModel):
             raise ValueError(
                 "reference must identify exactly one shallow collection image"
             )
-        requested_labels = label_node_paths or matches[0].label_node_paths
-        if not requested_labels or not set(requested_labels).issubset(
+        requested_labels = matches[0].label_node_paths if label_node_paths is None else label_node_paths
+        if not set(requested_labels).issubset(
             matches[0].label_node_paths
         ):
             raise ValueError(

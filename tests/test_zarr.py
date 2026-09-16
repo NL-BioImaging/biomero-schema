@@ -547,6 +547,23 @@ def test_shallow_zarr_reference_annotation_round_trip(
     assert ShallowZarrReference.from_annotation_values(values) == reference
 
 
+def test_label_free_shallow_image_reference_roundtrips(canonical_source, pixel_identity):
+    collection = ShallowCollection(
+        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        transfer_artifact="result.zarr", interchange_profile="ngff-0.4-zarr-v2",
+        images=(ShallowImageReference(
+            image_node_path=".", source=canonical_source,
+            returned_pixel_identity=pixel_identity, label_node_paths=(),
+        ),),
+    )
+    reference = ShallowZarrReference.from_collection(
+        collection, storage_root="import-mount-data",
+        relative_path="results/result.zarr", image_node_path=".",
+    )
+    assert reference.label_node_paths == ()
+    assert ShallowZarrReference.from_annotation_values(reference.to_annotation_values()) == reference
+
+
 def test_shallow_zarr_reference_requires_collection_membership(
     canonical_source: CanonicalZarrSource,
     pixel_identity: PixelIdentity,
