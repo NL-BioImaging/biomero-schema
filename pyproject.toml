@@ -52,3 +52,4 @@ test-validate = { cmd = ["biomero-schema", "validate", "tests/example_workflow.j
 test = { cmd = ["pytest", "-v"], description = "Run all tests" }
 
 [tool.setuptools_scm]
+write_to = "src/biomero_schema/_version.py"

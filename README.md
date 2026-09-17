@@ -10,9 +10,11 @@ The package keeps two contract areas separate:
 
 - `biomero_schema.models` is BIOMERO's normalized representation of a workflow
   descriptor.
-- `biomero_schema.zarr` and `biomero_schema.imports` define internal
+- `biomero_schema.zarr`, `biomero_schema.imports`, and
+  `biomero_schema.shallower` define internal
   cross-service contracts for managed Zarr sources, pixel identity, shallow
-  collections, and importer lifecycle operations.
+  collections, importer lifecycle operations, and remote normalization reports
+  and receipts.
 
 ## Workflow descriptors
 
@@ -99,6 +101,11 @@ descriptor version.
 The shallow-Zarr contracts are experimental BIOMERO storage contracts inspired
 by OME-NGFF RFC 8. They are not a replacement for OME-NGFF Collections and are
 not requirements for third-party workflows.
+
+See [Remote shallower contracts](https://nl-bioimaging.github.io/biomero-schema/remote-shallower-contracts/)
+for the report formats, trusted receipt hand-off, and compatibility requirements.
+These models do not enable shallow storage or remote execution; feature
+configuration belongs to the consuming services.
 
 ## Documentation development
 

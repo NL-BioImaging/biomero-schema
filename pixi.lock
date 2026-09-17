@@ -179,8 +179,8 @@ packages:
   requires_python: '>=3.9'
 - pypi: ./
   name: biomero-schema
-  version: 0.1.dev52+g2491e07b7.d20260603
-  sha256: 2e8137d6ba1c4550afb341736b79bac5b18018698dc316df7431eb9fe390bd79
+  version: 0.2.dev8+gdd2e17f53.d20260819
+  sha256: deb34c4a2402d6c2ba32af1685c615dfec2ad0ff79010080f7b76cb27fa7af90
   requires_dist:
   - pydantic>=2.0.0
   - click>=8.0.0

@@ -23,6 +23,29 @@ BIOMERO Schema contains several version domains. They must not be conflated.
 - Unknown or unverifiable pixel identity is never permission to discard result
   pixels.
 
+## Remote normalization compatibility
+
+Remote operation reports, batch reports, and receipts each use contract schema
+1 and require the version to be explicit. They are not legacy registration
+options and are not upcast when their version is missing or unknown.
+
+Adding `remoteReceipts` does not change the schema-2 import envelope or the
+schema-1 shallow operation. When no receipts are present, the envelope writer
+omits that field and preserves the local-operation wire representation. An
+older reader may reject the new field because these models forbid unknown
+fields; upgrade orchestration, helper, and importer to receipt-capable versions
+before enabling remote normalization. The configured helper image and tool
+version must agree with the receipt, independently of the schema package
+version.
+
+Shallow collections and image references also accept empty `labelNodePaths`.
+This allows an unchanged image result with no labels to reference its canonical
+pixels. Existing label-bearing records remain valid, but consumers with older
+minimum-label constraints need upgrading before accepting label-free records.
+
+See [Remote shallower contracts](remote-shallower-contracts.md) for the report
+formats and the checks performed by consuming services.
+
 ## OME-Zarr support window
 
 The accepted interchange profile is a deployment capability, not whatever the
