@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools-scm>=8"]
+requires = ["setuptools>=77.0.3", "wheel", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,8 @@ dynamic = ["version"]
 description = "CLI tool to validate and parse JSON files against a schema"
 authors = [{name = "Schema Validator", email = "validator@example.com"}]
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0.0",
