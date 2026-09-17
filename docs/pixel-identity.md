@@ -36,6 +36,12 @@ decide whether the original image pixels stayed the same.
     input. The original is never deleted; only redundant pixels in that new
     workflow result are omitted after a successful comparison.
 
+The comparison can run locally in the importer or remotely in the shallower
+helper. In the remote path, the importer validates a trusted receipt and the
+associated report/collection instead of hashing the omitted pixels again.
+The trust boundary and required checks are described in
+[Remote shallower contracts](remote-shallower-contracts.md).
+
 ## Exact comparison predicate
 
 In schema 1, two nodes are eligible for BIOMERO's “unchanged pixels” decision

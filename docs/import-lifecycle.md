@@ -37,6 +37,13 @@ The `biomero.shallow-zarr` postprocess operation asks the importer to:
 Identity worker parallelism is deployment configuration, not a client field.
 This lets facilities balance import latency against CPU and storage costs.
 
+This is the local normalization path. A remotely normalized result uses the
+same operation with an additional `remoteReceipts` list. In that case the
+importer validates the trusted receipt and associated report before reusing the
+shallow collection; it does not repeat the completed pixel-identity pass.
+See [Remote shallower contracts](remote-shallower-contracts.md) for the wire
+format and the checks required at that boundary.
+
 ```json
 {
   "kind": "biomero.shallow-zarr",
@@ -54,6 +61,17 @@ This lets facilities balance import latency against CPU and storage costs.
   "plateLabelName": null
 }
 ```
+
+`remoteReceipts` defaults to an empty tuple in the Python model.
+`ImportOptionsEnvelope.to_dict()` omits that field when empty, preserving the
+existing serialized operation for local normalization. Consumers should use
+the envelope's `to_dict()` for the import-order wire payload rather than
+serializing an operation independently.
+
+Remote receipts require matching receipt-capable orchestration and importer
+versions. Neither an empty receipt list nor installing this schema package
+enables remote execution. Invalid receipts for already-shallowed data must not
+be treated as permission to register an unverified result as full data.
 
 ## Registration controls
 

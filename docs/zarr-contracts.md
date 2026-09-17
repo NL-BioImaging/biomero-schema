@@ -12,11 +12,15 @@ and from stored Zarr manifests. `ImportOptionsEnvelope` schema 2 carries the
 registration controls and an ordered list of optional native lifecycle
 operations in the existing importer order `import_options` field.
 
-The first operation, `biomero.shallow-zarr`, requests importer-owned Zarr
-comparison and fail-safe shallow normalization after any converter/container
-preprocessing and before OMERO registration. It carries the exact
-`CanonicalInputManifest`; uncertain or changed data is kept full. Identity
-parallelism is importer deployment configuration and is not client input.
+The first operation, `biomero.shallow-zarr`, requests shallow-result preparation
+after any converter/container preprocessing and before OMERO registration.
+Without remote receipts, the importer performs comparison and fail-safe shallow
+normalization locally. With trusted receipts, it validates normalization already
+performed by the remote helper before reusing the shallow collection. The
+operation carries the exact `CanonicalInputManifest`; uncertain or changed
+full data is retained. Identity parallelism is deployment configuration and is
+not client input. See [Remote shallower contracts](remote-shallower-contracts.md)
+for the remote hand-off.
 
 Legacy flat schema-1 `ZarrImportOptions` payloads and empty options upcast to a
 schema-2 envelope with no operations. They therefore preserve the established
@@ -69,17 +73,24 @@ this package.
   renamed result to one expected input before verifying its pixel identity.
 - `ShallowImageReference` binds an omitted returned image node to its managed
   canonical source, verified returned-pixel identity, and retained label nodes.
+  `labelNodePaths` may be empty: an unchanged image can be shallow even when
+  the workflow does not return labels.
 - `ShallowCollection` is the small RFC-8-shaped BIOMERO storage record written
   as `.biomero-shallow.json`. It supports multiple image-node references so the
   same contract can later represent plate results. This is an internal
   cross-service record, not an OME-NGFF or BILAYERS extension that workflow
   providers must understand.
+  A collection must contain at least one image reference, but need not contain
+  any labels.
 - `ShallowZarrReference` locates one image node and its retained labels in a
   managed shallow collection. BIOMERO attaches its string encoding to the
   corresponding primary OMERO result object with namespace
   `biomero.zarr.shallow`. The same reference may be attached to compatibility
   label projections. Consumers must validate it against
   `.biomero-shallow.json`; the annotation is an index, not authority.
+  Its label list may also be empty. When constructing a reference with
+  `from_collection()`, omitting `label_node_paths` selects all recorded labels;
+  explicitly passing `()` selects none.
 - `ShallowPlateReference` is the compact Plate-level equivalent. It points to
   the collection and canonical source generation without copying every
   per-image identity into an OMERO MapAnnotation.

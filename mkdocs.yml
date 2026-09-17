@@ -67,9 +67,11 @@ nav:
       - Zarr contracts: zarr-contracts.md
       - Pixel identity: pixel-identity.md
       - Import lifecycle: import-lifecycle.md
+      - Remote shallower contracts: remote-shallower-contracts.md
       - Versioning and compatibility: versioning.md
   - Python API:
       - Workflow models: api/workflow.md
       - Zarr models: api/zarr.md
       - Import lifecycle models: api/imports.md
+      - Remote shallower models: api/shallower.md
   - Contributing to the docs: contributing.md
