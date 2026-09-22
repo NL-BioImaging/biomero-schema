@@ -1,4 +1,11 @@
-# BIOMERO Schema
+# <img src="https://raw.githubusercontent.com/NL-BioImaging/OMERO.biomero/refs/tags/v1.2.1/webapp/src/img/biomero-logo.svg" alt="BIOMERO" height="28" style="height:28px; width:auto; vertical-align:middle;"> BIOMERO Schema
+
+[![Tests](https://github.com/NL-BioImaging/biomero-schema/actions/workflows/test.yml/badge.svg)](https://github.com/NL-BioImaging/biomero-schema/actions/workflows/test.yml)
+[![Documentation](https://github.com/NL-BioImaging/biomero-schema/actions/workflows/docs.yml/badge.svg)](https://nl-bioimaging.github.io/biomero-schema/)
+[![PyPI](https://img.shields.io/pypi/v/biomero-schema)](https://pypi.org/project/biomero-schema/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+> 🚀 **This package is part of <img src="https://raw.githubusercontent.com/NL-BioImaging/OMERO.biomero/refs/tags/v1.2.1/webapp/src/img/biomero-logo.svg" alt="BIOMERO" height="16" style="height:16px; width:auto; vertical-align:middle;"> BIOMERO 2.0** — For complete deployment and FAIR infrastructure setup, start with the [**NL-BIOMERO documentation**](https://nl-bioimaging.github.io/NL-BIOMERO/) 📖
 
 Shared, versioned Pydantic contracts for the BIOMERO ecosystem.
 
