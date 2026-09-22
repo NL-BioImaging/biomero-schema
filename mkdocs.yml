@@ -68,6 +68,7 @@ nav:
       - Pixel identity: pixel-identity.md
       - Import lifecycle: import-lifecycle.md
       - Remote shallower contracts: remote-shallower-contracts.md
+      - Provenance alignment plan: provenance-alignment-plan.md
       - Versioning and compatibility: versioning.md
   - Python API:
       - Workflow models: api/workflow.md
