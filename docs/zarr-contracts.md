@@ -110,11 +110,11 @@ the fail-safe compatibility rules.
 ## RFC-8 draft projection boundary
 
 `biomero_schema.rfc8.project_rfc8_v1_draft()` projects only the scientific
-graph into the OME-NGFF RFC-8 v1 draft shape. Callers must provide explicit RFC
-paths; managed roots and provenance never leak into the projected `ome`
-metadata. This is a design and test adapter, not a production writer or a claim
-of conformance. RFC-8 is still evolving and the deployed BIOMERO interchange
-profile remains NGFF 0.4 / Zarr v2.
+graph into the [OME-NGFF RFC-8 v1 draft](https://ngff.openmicroscopy.org/rfc/8/versions/v1-2026-08/index.html)
+shape. Callers must provide explicit RFC paths; managed roots and provenance
+never leak into the projected `ome` metadata. This is a design and test adapter,
+not a production writer or a claim of conformance. RFC-8 is still evolving and
+the deployed BIOMERO interchange profile remains NGFF 0.4 / Zarr v2.
 
 ## Example
 
