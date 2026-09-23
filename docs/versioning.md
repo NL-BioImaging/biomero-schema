@@ -23,7 +23,7 @@ BIOMERO Schema contains several version domains. They must not be conflated.
 - Unknown or unverifiable pixel identity is never permission to discard result
   pixels.
 
-## Remote normalization compatibility
+## Remote shallowing compatibility
 
 Remote operation reports, batch reports, and receipts each use contract schema
 1 and require the version to be explicit. They are not legacy registration
@@ -34,7 +34,7 @@ schema-1 shallow operation. When no receipts are present, the envelope writer
 omits that field and preserves the local-operation wire representation. An
 older reader may reject the new field because these models forbid unknown
 fields; upgrade orchestration, helper, and importer to receipt-capable versions
-before enabling remote normalization. The configured helper image and tool
+before enabling remote shallowing. The configured helper image and tool
 version must agree with the receipt, independently of the schema package
 version.
 
@@ -54,6 +54,5 @@ base Image or Plate if the result must be visible in OMERO.
 
 BIOMERO will advance this profile as Glencoe and OMERO release support for
 newer NGFF versions. Providers are not expected to implement BIOMERO's internal
-shallow manifest. The logical graph and operational bindings are separate so an
-accepted RFC-8/Collections serializer can replace the private representation as
-support matures.
+shallow manifest. See the [RFC-8 projection boundary](zarr-contracts.md#rfc-8-draft-projection-boundary)
+for the deliberate separation between the portable graph and BIOMERO bindings.

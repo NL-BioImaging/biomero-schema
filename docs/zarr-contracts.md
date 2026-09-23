@@ -14,9 +14,9 @@ operations in the existing importer order `import_options` field.
 
 The first operation, `biomero.shallow-zarr`, requests shallow-result preparation
 after any converter/container preprocessing and before OMERO registration.
-Without remote receipts, the importer performs comparison and fail-safe shallow
-normalization locally. With trusted receipts, it validates normalization already
-performed by the remote helper before reusing the shallow collection. The
+Without remote receipts, the importer compares and shallows eligible results
+locally. With trusted receipts, it validates shallowing already performed by
+the remote helper before reusing the shallow collection. The
 operation carries the exact `CanonicalInputManifest`; uncertain or changed
 full data is retained. Identity parallelism is deployment configuration and is
 not client input. See [Remote shallower contracts](remote-shallower-contracts.md)
@@ -112,9 +112,15 @@ the fail-safe compatibility rules.
 `biomero_schema.rfc8.project_rfc8_v1_draft()` projects only the scientific
 graph into the [OME-NGFF RFC-8 v1 draft](https://ngff.openmicroscopy.org/rfc/8/versions/v1-2026-08/index.html)
 shape. Callers must provide explicit RFC paths; managed roots and provenance
-never leak into the projected `ome` metadata. This is a design and test adapter,
-not a production writer or a claim of conformance. RFC-8 is still evolving and
-the deployed BIOMERO interchange profile remains NGFF 0.4 / Zarr v2.
+never enter the projected `ome` metadata. Tests cover both an Image and a Plate
+with label-to-source relationships.
+
+This projection is a design boundary, not stored metadata or a claim of RFC-8
+conformance. BIOMERO currently references NGFF 0.4 / Zarr v2 nodes with
+`.zattrs`, while RFC-8 `zarr` paths resolve Zarr v3 `zarr.json` metadata.
+Persisting the projection around the current stores would therefore be
+misleading. The private manifest remains authoritative until the deployed data
+profile and an accepted Collections representation can be supported together.
 
 ## Example
 
