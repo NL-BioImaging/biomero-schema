@@ -110,6 +110,10 @@ contract, not RFC-8 metadata. Its portable image/label graph is separate from
 BIOMERO storage and provenance bindings so that a future standards adapter can
 reuse the graph without redefining the operational data.
 
+The [provenance alignment plan](docs/provenance-alignment-plan.md) proposes a
+versioned BIOMERO run-record contract shared by BIOMERO core,
+BIOMERO.importer, result scripts, and metadata maintenance.
+
 See [Remote shallower contracts](https://nl-bioimaging.github.io/biomero-schema/remote-shallower-contracts/)
 for the report formats, trusted receipt hand-off, and compatibility requirements.
 These models do not enable shallow storage or remote execution; feature
