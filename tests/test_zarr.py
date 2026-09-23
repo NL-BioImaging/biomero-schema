@@ -21,8 +21,13 @@ from biomero_schema.zarr import (
     CanonicalZarrSource,
     ManagedZarrNode,
     PixelIdentity,
+    ShallowBindings,
     ShallowCollection,
-    ShallowImageReference,
+    ShallowImageBinding,
+    ShallowImageNode,
+    ShallowLabelBinding,
+    ShallowLabelNode,
+    ShallowManifest,
     ShallowPlateReference,
     ShallowZarrReference,
     ZarrImportOptions,
@@ -67,6 +72,55 @@ def canonical_source(pixel_identity: PixelIdentity) -> CanonicalZarrSource:
         pixel_identity_origin="raw",
         canonical_pixel_verified=True,
         store_identity="ISCC:KSTORE",
+    )
+
+
+def shallow_manifest(
+    canonical_source: CanonicalZarrSource,
+    pixel_identity: PixelIdentity,
+    *,
+    label_components: tuple[ZarrLabelComponent, ...] = (),
+    workflow_id: str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    artifact: str = "Image-3207.ome.zarr",
+    collection_name: str = "analysis result",
+) -> ShallowManifest:
+    image_id = "image-0"
+    labels = tuple(
+        ShallowLabelNode(
+            id=f"label-{index}",
+            name=component.logical_node_path,
+            node_path=component.logical_node_path,
+            source_image_id=image_id,
+        )
+        for index, component in enumerate(label_components)
+    )
+    return ShallowManifest(
+        workflow_id=UUID(workflow_id),
+        transfer_artifact=artifact,
+        interchange_profile="ngff-0.4-zarr-v2",
+        collection=ShallowCollection(
+            name=collection_name,
+            images=(ShallowImageNode(
+                id=image_id,
+                name=canonical_source.node_path,
+                node_path=canonical_source.node_path,
+            ),),
+            labels=labels,
+        ),
+        bindings=ShallowBindings(
+            images=(ShallowImageBinding(
+                node_id=image_id,
+                source=canonical_source,
+                returned_pixel_identity=pixel_identity,
+            ),),
+            labels=tuple(
+                ShallowLabelBinding(
+                    node_id=label.node_id,
+                    component=component,
+                )
+                for label, component in zip(labels, label_components)
+            ),
+        ),
     )
 
 
@@ -410,31 +464,34 @@ def test_rejects_shape_axes_mismatch() -> None:
         )
 
 
-def test_shallow_collection_wire_round_trip(
+def test_shallow_manifest_wire_round_trip_separates_graph_and_bindings(
     canonical_source: CanonicalZarrSource,
     pixel_identity: PixelIdentity,
 ) -> None:
-    collection = ShallowCollection(
-        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-        transfer_artifact="Image-3207.ome.zarr",
-        interchange_profile="ngff-0.4-zarr-v2",
-        images=(ShallowImageReference(
-            image_node_path=".",
-            source=canonical_source,
-            returned_pixel_identity=pixel_identity,
-            label_node_paths=("labels/cells", "labels/nuclei"),
-        ),),
+    label_components = tuple(
+        ZarrLabelComponent(
+            logical_node_path=f"labels/{name}",
+            pixel_identity=pixel_identity.model_copy(update={
+                "node_path": f"labels/{name}",
+                "role": "label",
+            }),
+        )
+        for name in ("cells", "nuclei")
+    )
+    manifest = shallow_manifest(
+        canonical_source,
+        pixel_identity,
+        label_components=label_components,
     )
 
-    wire = collection.to_dict()
+    wire = manifest.to_dict()
 
-    assert wire["model"] == "rfc8-shallow-copy"
-    assert wire["images"][0]["source"]["sourceObjectId"] == 3207
-    assert wire["images"][0]["labelNodePaths"] == [
-        "labels/cells",
-        "labels/nuclei",
-    ]
-    assert ShallowCollection.from_dict(wire) == collection
+    assert wire["format"] == "biomero-shallow-zarr"
+    assert "model" not in wire
+    assert wire["collection"]["images"][0]["id"] == "image-0"
+    assert "source" not in wire["collection"]["images"][0]
+    assert wire["bindings"]["images"][0]["source"]["sourceObjectId"] == 3207
+    assert ShallowManifest.from_dict(wire) == manifest
 
 
 def test_shallow_collection_tracks_local_and_inherited_labels(
@@ -450,57 +507,53 @@ def test_shallow_collection_tracks_local_and_inherited_labels(
         "role": "label",
         "instance_code": "ISCC:ICELLS",
     })
-    collection = ShallowCollection(
-        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-        transfer_artifact="result.zarr",
-        interchange_profile="ngff-0.4-zarr-v2",
-        images=(ShallowImageReference(
-            image_node_path=".",
-            source=canonical_source,
-            returned_pixel_identity=pixel_identity,
-            label_node_paths=("labels/nuclei", "labels/cells"),
-            label_components=(
-                ZarrLabelComponent(
-                    logical_node_path="labels/nuclei",
-                    pixel_identity=nuclei_identity,
-                    source=ManagedZarrNode(
-                        storage_root="import-mount-data",
-                        relative_path="Project A/.analyzed/first/result.zarr",
-                        node_path="labels/nuclei",
-                    ),
-                ),
-                ZarrLabelComponent(
-                    logical_node_path="labels/cells",
-                    pixel_identity=cells_identity,
+    manifest = shallow_manifest(
+        canonical_source,
+        pixel_identity,
+        artifact="result.zarr",
+        label_components=(
+            ZarrLabelComponent(
+                logical_node_path="labels/nuclei",
+                pixel_identity=nuclei_identity,
+                source=ManagedZarrNode(
+                    storage_root="import-mount-data",
+                    relative_path="Project A/.analyzed/first/result.zarr",
+                    node_path="labels/nuclei",
                 ),
             ),
-        ),),
+            ZarrLabelComponent(
+                logical_node_path="labels/cells",
+                pixel_identity=cells_identity,
+            ),
+        ),
     )
 
-    restored = ShallowCollection.from_dict(collection.to_dict())
+    restored = ShallowManifest.from_dict(manifest.to_dict())
 
-    assert restored == collection
-    assert restored.images[0].label_components[0].source is not None
-    assert restored.images[0].label_components[1].source is None
+    assert restored == manifest
+    assert restored.bindings.labels[0].component.source is not None
+    assert restored.bindings.labels[1].component.source is None
 
 
-def test_shallow_collection_requires_component_path_coverage(
+def test_shallow_manifest_requires_graph_binding_coverage(
     canonical_source: CanonicalZarrSource,
     pixel_identity: PixelIdentity,
 ) -> None:
-    with pytest.raises(ValidationError, match="every labelNodePath"):
-        ShallowImageReference(
-            image_node_path=".",
-            source=canonical_source,
-            returned_pixel_identity=pixel_identity,
-            label_node_paths=("labels/nuclei", "labels/cells"),
-            label_components=(ZarrLabelComponent(
-                logical_node_path="labels/nuclei",
-                pixel_identity=pixel_identity.model_copy(update={
-                    "node_path": "labels/nuclei",
-                    "role": "label",
-                }),
-            ),),
+    manifest = shallow_manifest(canonical_source, pixel_identity)
+    with pytest.raises(ValidationError, match="every shallow label node"):
+        ShallowManifest(
+            workflow_id=manifest.workflow_id,
+            transfer_artifact=manifest.transfer_artifact,
+            interchange_profile=manifest.interchange_profile,
+            collection=manifest.collection.model_copy(update={
+                "labels": (ShallowLabelNode(
+                    id="label-0",
+                    name="labels/nuclei",
+                    node_path="labels/nuclei",
+                    source_image_id="image-0",
+                ),),
+            }),
+            bindings=manifest.bindings,
         )
 
 
@@ -508,12 +561,13 @@ def test_shallow_reference_rejects_mismatched_identity_node(
     canonical_source: CanonicalZarrSource,
     pixel_identity: PixelIdentity,
 ) -> None:
-    with pytest.raises(ValidationError, match="must equal imageNodePath"):
-        ShallowImageReference(
-            image_node_path="well/0",
+    with pytest.raises(ValidationError, match="must equal source.nodePath"):
+        ShallowImageBinding(
+            node_id="image-0",
             source=canonical_source,
-            returned_pixel_identity=pixel_identity,
-            label_node_paths=("well/0/labels/cells",),
+            returned_pixel_identity=pixel_identity.model_copy(update={
+                "node_path": "well/0",
+            }),
         )
 
 
@@ -521,19 +575,17 @@ def test_shallow_zarr_reference_annotation_round_trip(
     canonical_source: CanonicalZarrSource,
     pixel_identity: PixelIdentity,
 ) -> None:
-    collection = ShallowCollection(
-        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-        transfer_artifact="Image-3207.ome.zarr",
-        interchange_profile="ngff-0.4-zarr-v2",
-        images=(ShallowImageReference(
-            image_node_path=".",
-            source=canonical_source,
-            returned_pixel_identity=pixel_identity,
-            label_node_paths=("labels/cells",),
-        ),),
+    component = ZarrLabelComponent(
+        logical_node_path="labels/cells",
+        pixel_identity=pixel_identity.model_copy(update={
+            "node_path": "labels/cells", "role": "label",
+        }),
     )
-    reference = ShallowZarrReference.from_collection(
-        collection,
+    manifest = shallow_manifest(
+        canonical_source, pixel_identity, label_components=(component,),
+    )
+    reference = ShallowZarrReference.from_manifest(
+        manifest,
         storage_root="import-mount-data",
         relative_path="Project A/.analyzed/run/result.zarr",
         image_node_path=".",
@@ -548,16 +600,11 @@ def test_shallow_zarr_reference_annotation_round_trip(
 
 
 def test_label_free_shallow_image_reference_roundtrips(canonical_source, pixel_identity):
-    collection = ShallowCollection(
-        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-        transfer_artifact="result.zarr", interchange_profile="ngff-0.4-zarr-v2",
-        images=(ShallowImageReference(
-            image_node_path=".", source=canonical_source,
-            returned_pixel_identity=pixel_identity, label_node_paths=(),
-        ),),
+    manifest = shallow_manifest(
+        canonical_source, pixel_identity, artifact="result.zarr",
     )
-    reference = ShallowZarrReference.from_collection(
-        collection, storage_root="import-mount-data",
+    reference = ShallowZarrReference.from_manifest(
+        manifest, storage_root="import-mount-data",
         relative_path="results/result.zarr", image_node_path=".",
     )
     assert reference.label_node_paths == ()
@@ -568,21 +615,19 @@ def test_shallow_zarr_reference_requires_collection_membership(
     canonical_source: CanonicalZarrSource,
     pixel_identity: PixelIdentity,
 ) -> None:
-    collection = ShallowCollection(
-        workflow_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-        transfer_artifact="Image-3207.ome.zarr",
-        interchange_profile="ngff-0.4-zarr-v2",
-        images=(ShallowImageReference(
-            image_node_path=".",
-            source=canonical_source,
-            returned_pixel_identity=pixel_identity,
-            label_node_paths=("labels/cells",),
-        ),),
+    component = ZarrLabelComponent(
+        logical_node_path="labels/cells",
+        pixel_identity=pixel_identity.model_copy(update={
+            "node_path": "labels/cells", "role": "label",
+        }),
+    )
+    manifest = shallow_manifest(
+        canonical_source, pixel_identity, label_components=(component,),
     )
 
     with pytest.raises(ValueError, match="labels must belong"):
-        ShallowZarrReference.from_collection(
-            collection,
+        ShallowZarrReference.from_manifest(
+            manifest,
             storage_root="import-mount-data",
             relative_path="Project A/.analyzed/run/result.zarr",
             image_node_path=".",
@@ -618,24 +663,38 @@ def test_shallow_plate_reference_round_trip(
         "data_code": "ISCC:DLABEL",
         "instance_code": "ISCC:ILABEL",
     })
-    collection = ShallowCollection(
+    manifest = ShallowManifest(
         workflow_id=UUID("00000000-0000-0000-0000-000000000123"),
         transfer_artifact="plate.ome.zarr",
         interchange_profile="ngff-0.4-zarr-v2",
-        images=(ShallowImageReference(
-            image_node_path="A/1/0",
-            source=plate_source,
-            returned_pixel_identity=image_identity,
-            label_node_paths=("A/1/0/labels/nuclei",),
-            label_components=(ZarrLabelComponent(
+        collection=ShallowCollection(
+            name="plate result",
+            images=(ShallowImageNode(
+                id="image-0", name="A/1/0", node_path="A/1/0",
+            ),),
+            labels=(ShallowLabelNode(
+                id="label-0", name="A/1/0/labels/nuclei",
+                node_path="A/1/0/labels/nuclei",
+                source_image_id="image-0",
+            ),),
+        ),
+        bindings=ShallowBindings(
+            images=(ShallowImageBinding(
+                node_id="image-0", source=plate_source,
+                returned_pixel_identity=image_identity,
+            ),),
+            labels=(ShallowLabelBinding(
+                node_id="label-0",
+                component=ZarrLabelComponent(
                 logical_node_path="A/1/0/labels/nuclei",
                 pixel_identity=label_identity,
+                ),
             ),),
-        ),),
+        ),
     )
 
-    reference = ShallowPlateReference.from_collection(
-        collection,
+    reference = ShallowPlateReference.from_manifest(
+        manifest,
         storage_root="group-3-data",
         relative_path=".analyzed/run/plate.ome.zarr",
     )

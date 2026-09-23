@@ -79,7 +79,8 @@ viewable through OMERO. The exact profile is constrained by the Glencoe
 exporter and OMERO Zarr PixelBuffer versions deployed with BIOMERO, and will be
 raised as those dependencies add newer NGFF support.
 
-Native RFC-8 shallow output is an optional optimization, not a workflow
-requirement. A portable workflow may simply return a full Zarr with unchanged
-source pixels plus new labels; BIOMERO can verify and normalize that result at
-its own storage boundary.
+Workflows do not produce BIOMERO's private shallow manifest. A portable
+workflow returns a full compatible Zarr with unchanged source pixels plus new
+labels; BIOMERO can verify and normalize that result at its own storage
+boundary. Native Collections input can be added when an accepted OME-NGFF
+representation is supported by the deployed toolchain.

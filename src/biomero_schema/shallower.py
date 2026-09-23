@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 
 from .zarr import (
-    CanonicalInputManifest, ShallowCollection, ZarrContractModel,
+    CanonicalInputManifest, ShallowManifest, ZarrContractModel,
     _validate_relative_path,
 )
 
@@ -16,18 +16,18 @@ SHALLOW_BATCH_REPORT = ".biomero-shallow-batch.json"
 
 class ShallowOperationReport(ZarrContractModel):
     # Required on the wire: missing versions are never silently upcast.
-    schema_version: Literal[1] = Field(alias="schema")
+    schema_version: Literal[2] = Field(alias="schema")
     tool_version: str = Field(alias="toolVersion", min_length=1)
     image: str | None = None
     input_contract: Literal[1] = Field(alias="inputContract")
-    output_contract: Literal[1] = Field(alias="outputContract")
+    output_contract: Literal[2] = Field(alias="outputContract")
     adapter: Literal["ngff-0.4-zarr-v2"]
     canonical_inputs: CanonicalInputManifest = Field(alias="canonicalInputs")
     artifact: str
     decision: Literal["eligible", "keep-full", "skip-passthrough"]
     reason: str
     result: Literal["normalized", "kept-full", "skipped"]
-    collection: ShallowCollection | None = None
+    manifest: ShallowManifest | None = None
     timings: dict[str, float]
     slurm_job_id: str | None = Field(default=None, alias="slurmJobId")
     task_id: UUID | None = Field(default=None, alias="taskId")
@@ -36,14 +36,14 @@ class ShallowOperationReport(ZarrContractModel):
 
     @model_validator(mode="after")
     def validate_terminal(self):
-        if (self.result == "normalized") != (self.collection is not None):
-            raise ValueError("Only normalized reports contain a collection")
-        if self.collection is not None:
+        if (self.result == "normalized") != (self.manifest is not None):
+            raise ValueError("Only normalized reports contain a manifest")
+        if self.manifest is not None:
             if self.decision != "eligible":
                 raise ValueError("Normalized reports must be eligible")
-            if self.collection.workflow_id != self.canonical_inputs.workflow_id:
+            if self.manifest.workflow_id != self.canonical_inputs.workflow_id:
                 raise ValueError("Report workflow identity mismatch")
-            if self.artifact != self.collection.transfer_artifact:
+            if self.artifact != self.manifest.transfer_artifact:
                 raise ValueError("Report artifact mismatch")
         if any(value < 0 for value in self.timings.values()):
             raise ValueError("Timings cannot be negative")

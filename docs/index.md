@@ -32,5 +32,5 @@ and are not additions to BILAYERS or OME-NGFF.
 !!! warning "Experimental shallow-Zarr contracts"
     The shallow-Zarr and pixel-identity models capture BIOMERO's current
     implementation while OME-NGFF collections and RFC-8 evolve. They are
-    versioned and backward-compatible, but should not be presented as an
-    adopted OME-NGFF interchange format.
+    explicitly versioned and require migrations for breaking changes, but
+    should not be presented as an adopted OME-NGFF interchange format.
