@@ -1,4 +1,4 @@
-"""Portable receipts for the optional filesystem result normalizer."""
+"""Portable receipts for optional filesystem result shallowing."""
 
 from typing import Literal
 from uuid import UUID

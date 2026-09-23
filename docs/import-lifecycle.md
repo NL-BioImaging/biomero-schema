@@ -31,13 +31,13 @@ The `biomero.shallow-zarr` postprocess operation asks the importer to:
 2. compute identities for returned image nodes;
 3. retain a full result whenever matching is missing, ambiguous, changed, or
    fails;
-4. otherwise normalize the result into a managed shallow collection before
+4. otherwise shallow the result into a managed collection before
    registering it with OMERO.
 
 Identity worker parallelism is deployment configuration, not a client field.
 This lets facilities balance import latency against CPU and storage costs.
 
-This is the local normalization path. A remotely normalized result uses the
+This is the local shallowing path. A remotely shallowed result uses the
 same operation with an additional `remoteReceipts` list. In that case the
 importer validates the trusted receipt and associated report before reusing the
 shallow collection; it does not repeat the completed pixel-identity pass.
@@ -64,7 +64,7 @@ format and the checks required at that boundary.
 
 `remoteReceipts` defaults to an empty tuple in the Python model.
 `ImportOptionsEnvelope.to_dict()` omits that field when empty, preserving the
-existing serialized operation for local normalization. Consumers should use
+existing serialized operation for local shallowing. Consumers should use
 the envelope's `to_dict()` for the import-order wire payload rather than
 serializing an operation independently.
 

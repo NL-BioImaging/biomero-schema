@@ -1,9 +1,9 @@
 # Remote shallower contracts
 
 `biomero_schema.shallower` defines the reports and receipts exchanged when
-BIOMERO normalizes workflow results on Slurm before transferring them to the
-importer. Remote normalization uses the same canonical-input snapshot and
-shallow manifest format as local normalization; it changes where that work
+BIOMERO shallows workflow results on Slurm before transferring them to the
+importer. Remote shallowing uses the same canonical-input snapshot and shallow
+manifest format as local shallowing; it changes where that work
 is performed, not the meaning of the stored result.
 
 The schema package validates data structures only. It does not submit jobs,
@@ -14,7 +14,7 @@ Workflow providers do not need to produce these records.
 
 | Model | Stored record | Purpose |
 | --- | --- | --- |
-| `ShallowOperationReport` | `.biomero-shallow-report.json` inside a returned Zarr | Records one artifact's normalization decision, outcome, canonical inputs, helper provenance, and measurements. |
+| `ShallowOperationReport` | `.biomero-shallow-report.json` inside a returned Zarr | Records one artifact's shallowing decision, outcome, canonical inputs, helper provenance, and measurements. |
 | `ShallowBatchReport` | `.biomero-shallow-batch.json` in the returned-results directory | Records completion of one helper invocation over that directory and collects receipts for normalized artifacts. This is not a workflow batching record. |
 | `RemoteShallowReceipt` | Trusted orchestration data, forwarded in import options | Binds one normalized artifact to its report checksum, helper image/version, Slurm job, and tracking task. |
 
@@ -89,7 +89,7 @@ bytes, configured image/version, canonical-input snapshot, task/job identity,
 and shallow manifest. A checksum is not a signature: trust comes from the
 orchestration hand-off, not from the presence of a report in a result directory.
 
-When these checks succeed, the importer can reuse the completed normalization
+When these checks succeed, the importer can reuse the completed shallowing
 without repeating pixel hashing. Invalid or missing provenance for an
 already-shallowed result is an error; it cannot safely fall back to full pixels
 that are no longer present. Full artifacts retained by the helper can still

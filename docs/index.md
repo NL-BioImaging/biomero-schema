@@ -10,7 +10,7 @@ The package has two deliberately separate responsibilities:
   converts supported BIAFLOWS and BILAYERS provider descriptors.
 - **Cross-service contracts** describe BIOMERO-owned hand-offs, including
   canonical Zarr sources, pixel identities, shallow Zarr collections,
-  importer lifecycle operations, and remote normalization reports and receipts.
+  importer lifecycle operations, and remote shallowing reports and receipts.
 
 This separation matters. A FAIR workflow provider can continue using the
 supported external BIAFLOWS or BILAYERS specification. BIOMERO's normalized
@@ -25,8 +25,8 @@ and are not additions to BILAYERS or OME-NGFF.
 | describe a workflow | [Workflow descriptors](workflow-descriptors.md) |
 | understand `.biomero-shallow.json` | [Zarr contracts](zarr-contracts.md) |
 | interpret `dataCode`, `instanceCode`, or another identity field | [Pixel identity](pixel-identity.md) |
-| request importer-owned shallow normalization | [Import lifecycle](import-lifecycle.md) |
-| exchange remote normalization reports and receipts | [Remote shallower contracts](remote-shallower-contracts.md) |
+| request importer-owned shallowing | [Import lifecycle](import-lifecycle.md) |
+| exchange remote shallowing reports and receipts | [Remote shallower contracts](remote-shallower-contracts.md) |
 | integrate another BIOMERO service | [Versioning and compatibility](versioning.md) and the [Python API](api/zarr.md) |
 
 !!! warning "Experimental shallow-Zarr contracts"

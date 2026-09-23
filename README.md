@@ -20,7 +20,7 @@ The package keeps two contract areas separate:
 - `biomero_schema.zarr`, `biomero_schema.imports`, and
   `biomero_schema.shallower` define internal
   cross-service contracts for managed Zarr sources, pixel identity, shallow
-  collections, importer lifecycle operations, and remote normalization reports
+  collections, importer lifecycle operations, and remote shallowing reports
   and receipts.
 
 ## Workflow descriptors
@@ -105,11 +105,10 @@ The camelCase output from `to_dict()` is the stable wire representation. Every
 contract family carries its own integer `schema`, independently of the workflow
 descriptor version.
 
-The shallow-Zarr contracts are experimental BIOMERO storage contracts. Their
-scientific collection graph is kept separate from BIOMERO storage, identity and
-workflow bindings so that an accepted OME-NGFF Collections representation can
-replace the private serialization later. The current manifest is not RFC-8
-metadata and is not a requirement for third-party workflows.
+The shallow-Zarr manifest is an experimental, versioned BIOMERO storage
+contract, not RFC-8 metadata. Its portable image/label graph is separate from
+BIOMERO storage and provenance bindings so that a future standards adapter can
+reuse the graph without redefining the operational data.
 
 See [Remote shallower contracts](https://nl-bioimaging.github.io/biomero-schema/remote-shallower-contracts/)
 for the report formats, trusted receipt hand-off, and compatibility requirements.
