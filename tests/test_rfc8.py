@@ -70,6 +70,90 @@ def _manifest() -> ShallowManifest:
     )
 
 
+def _plate_manifest() -> ShallowManifest:
+    def identity(node_path: str, suffix: str, role: str) -> PixelIdentity:
+        return PixelIdentity(
+            node_path=node_path,
+            role=role,
+            iscc=f"ISCC:K{suffix}",
+            data_code=f"ISCC:G{suffix}",
+            instance_code=f"ISCC:I{suffix}",
+            tool_version="0.2.0",
+            imagewalk_revision="iscc-bio/0.2.0",
+            shape=(1, 1, 8, 8),
+            dtype="uint16",
+            axes=("t", "c", "y", "x"),
+        )
+
+    image_nodes = (
+        ShallowImageNode(id="field-a1", name="A/1/0", nodePath="A/1/0"),
+        ShallowImageNode(id="field-b1", name="B/1/0", nodePath="B/1/0"),
+    )
+    label_nodes = (
+        ShallowLabelNode(
+            id="cells-a1",
+            name="cells A/1/0",
+            nodePath="A/1/0/labels/cells",
+            sourceImageId="field-a1",
+        ),
+        ShallowLabelNode(
+            id="cells-b1",
+            name="cells B/1/0",
+            nodePath="B/1/0/labels/cells",
+            sourceImageId="field-b1",
+        ),
+    )
+    image_bindings = tuple(
+        ShallowImageBinding(
+            nodeId=node.node_id,
+            source=CanonicalZarrSource(
+                storageRoot="group-data",
+                relativePath=".processed/Plate-7.ome.zarr",
+                nodePath=node.node_path,
+                sourceObjectType="Plate",
+                sourceObjectId=7,
+                sourceGeneration=3,
+                interchangeProfile="ngff-0.4-zarr-v2",
+                pixelIdentity=identity(
+                    node.node_path, node.node_id.replace("-", "").upper(), "image"
+                ),
+                pixelIdentityOrigin="omero-pixels",
+                canonicalPixelVerified=True,
+            ),
+            returnedPixelIdentity=identity(
+                node.node_path, node.node_id.replace("-", "").upper(), "image"
+            ),
+        )
+        for node in image_nodes
+    )
+    label_bindings = tuple(
+        ShallowLabelBinding(
+            nodeId=node.node_id,
+            component=ZarrLabelComponent(
+                logicalNodePath=node.node_path,
+                pixelIdentity=identity(
+                    node.node_path, node.node_id.replace("-", "").upper(), "label"
+                ),
+            ),
+        )
+        for node in label_nodes
+    )
+    return ShallowManifest(
+        workflowId=UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        transferArtifact="plate-result.zarr",
+        interchangeProfile="ngff-0.4-zarr-v2",
+        collection=ShallowCollection(
+            name="Plate 7 segmentation result",
+            images=image_nodes,
+            labels=label_nodes,
+        ),
+        bindings=ShallowBindings(
+            images=image_bindings,
+            labels=label_bindings,
+        ),
+    )
+
+
 def test_projects_only_portable_relationships_to_rfc8_v1_draft() -> None:
     projected = project_rfc8_v1_draft(
         _manifest(),
@@ -115,6 +199,45 @@ def test_projects_only_portable_relationships_to_rfc8_v1_draft() -> None:
     serialized = str(projected)
     assert "storageRoot" not in serialized
     assert "workflowId" not in serialized
+    assert "ISCC:" not in serialized
+
+
+def test_projects_plate_fields_and_labels_to_rfc8_v1_draft() -> None:
+    projected = project_rfc8_v1_draft(
+        _plate_manifest(),
+        ome_version="next",
+        image_paths={
+            "field-a1": Rfc8DraftPath(
+                type="zarr", path="../canonical-plate.ome.zarr/A/1/0",
+            ),
+            "field-b1": Rfc8DraftPath(
+                type="zarr", path="../canonical-plate.ome.zarr/B/1/0",
+            ),
+        },
+        label_paths={
+            "cells-a1": Rfc8DraftPath(
+                type="zarr", path="./A/1/0/labels/cells",
+            ),
+            "cells-b1": Rfc8DraftPath(
+                type="zarr", path="./B/1/0/labels/cells",
+            ),
+        },
+    )
+
+    nodes = projected["ome"]["nodes"]
+    assert [node["id"] for node in nodes] == [
+        "field-a1", "field-b1", "cells-a1", "cells-b1",
+    ]
+    assert nodes[2]["attributes"]["labels"]["source"] == [
+        {"id": "field-a1"},
+    ]
+    assert nodes[3]["attributes"]["labels"]["source"] == [
+        {"id": "field-b1"},
+    ]
+    serialized = str(projected)
+    assert "Plate-7" not in serialized
+    assert "sourceObjectId" not in serialized
+    assert "sourceGeneration" not in serialized
     assert "ISCC:" not in serialized
 
 
