@@ -19,6 +19,8 @@ CANONICAL_PLATE_IMAGE_NAMESPACE = "biomero.zarr.plate-source.image"
 CANONICAL_PLATE_LABEL_NAMESPACE = "biomero.zarr.plate-source.label"
 SHALLOW_COLLECTION_MANIFEST = ".biomero-shallow.json"
 SHALLOW_COLLECTION_NAMESPACE = "biomero.zarr.shallow"
+SHALLOW_FORMAT = "biomero-shallow-zarr"
+SHALLOW_MANIFEST_SCHEMA = 2
 TRANSFER_INPUT_MARKER = ".biomero-input.json"
 PIXEL_IDENTITY_METHOD = "iscc-bio/imagewalk"
 
@@ -564,71 +566,124 @@ class CanonicalInputManifest(ZarrContractModel):
         return self
 
 
-class ShallowImageReference(ZarrContractModel):
-    """One omitted image node and the labels retained for it."""
+class ShallowImageNode(ZarrContractModel):
+    """One logical source-image node in a shallow result collection."""
 
-    image_node_path: str = Field(alias="imageNodePath")
+    node_id: str = Field(alias="id", pattern=r"^[a-zA-Z0-9-_.]+$")
+    name: str = Field(min_length=1)
+    node_path: str = Field(alias="nodePath")
+
+    @field_validator("node_path")
+    @classmethod
+    def validate_node_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=True)
+
+
+class ShallowLabelNode(ZarrContractModel):
+    """One logical label node derived from a source-image node."""
+
+    node_id: str = Field(alias="id", pattern=r"^[a-zA-Z0-9-_.]+$")
+    name: str = Field(min_length=1)
+    node_path: str = Field(alias="nodePath")
+    source_image_id: str = Field(
+        alias="sourceImageId",
+        pattern=r"^[a-zA-Z0-9-_.]+$",
+    )
+
+    @field_validator("node_path")
+    @classmethod
+    def validate_node_path(cls, value: str) -> str:
+        return _validate_relative_path(value, allow_dot=False)
+
+
+class ShallowCollection(ZarrContractModel):
+    """Portable scientific relationships in a BIOMERO shallow result.
+
+    This graph deliberately excludes managed roots, OMERO identifiers, pixel
+    identities and workflow receipts.  It is not RFC-8 metadata; adapters can
+    project the graph to a standards representation when that representation
+    is supported by the selected NGFF profile.
+    """
+
+    name: str = Field(min_length=1)
+    images: tuple[ShallowImageNode, ...] = Field(min_length=1)
+    labels: tuple[ShallowLabelNode, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def validate_graph(self) -> "ShallowCollection":
+        nodes = (*self.images, *self.labels)
+        ids = [node.node_id for node in nodes]
+        if len(ids) != len(set(ids)):
+            raise ValueError("shallow collection node IDs must be unique")
+        names = [node.name for node in nodes]
+        if len(names) != len(set(names)):
+            raise ValueError("shallow collection node names must be unique")
+        image_ids = {image.node_id for image in self.images}
+        if any(label.source_image_id not in image_ids for label in self.labels):
+            raise ValueError("shallow labels must reference a collection image")
+        image_paths = [image.node_path for image in self.images]
+        if len(image_paths) != len(set(image_paths)):
+            raise ValueError("shallow image node paths must be unique")
+        label_paths = [label.node_path for label in self.labels]
+        if len(label_paths) != len(set(label_paths)):
+            raise ValueError("shallow label node paths must be unique")
+        return self
+
+
+class ShallowImageBinding(ZarrContractModel):
+    """BIOMERO storage and identity binding for one logical image node."""
+
+    node_id: str = Field(alias="nodeId", pattern=r"^[a-zA-Z0-9-_.]+$")
     source: CanonicalZarrSource
     returned_pixel_identity: PixelIdentity = Field(
         alias="returnedPixelIdentity"
     )
-    label_node_paths: tuple[str, ...] = Field(
-        alias="labelNodePaths",
-    )
-    label_components: tuple[ZarrLabelComponent, ...] = Field(
-        default_factory=tuple,
-        alias="labelComponents",
-    )
-
-    @field_validator("image_node_path")
-    @classmethod
-    def validate_image_node_path(cls, value: str) -> str:
-        return _validate_relative_path(value, allow_dot=True)
-
-    @field_validator("label_node_paths")
-    @classmethod
-    def validate_label_node_paths(
-        cls,
-        value: tuple[str, ...],
-    ) -> tuple[str, ...]:
-        validated = tuple(
-            _validate_relative_path(path, allow_dot=False) for path in value
-        )
-        if len(validated) != len(set(validated)):
-            raise ValueError("labelNodePaths must be unique")
-        return validated
 
     @model_validator(mode="after")
-    def validate_identity_node(self) -> "ShallowImageReference":
-        if self.returned_pixel_identity.node_path != self.image_node_path:
+    def validate_identity_node(self) -> "ShallowImageBinding":
+        if self.returned_pixel_identity.node_path != self.source.node_path:
             raise ValueError(
-                "returnedPixelIdentity.nodePath must equal imageNodePath"
+                "returnedPixelIdentity.nodePath must equal source.nodePath"
             )
         if self.returned_pixel_identity.role != "image":
             raise ValueError("returnedPixelIdentity must describe an image")
-        if self.label_components:
-            component_paths = [
-                component.logical_node_path
-                for component in self.label_components
-            ]
-            if len(component_paths) != len(set(component_paths)):
-                raise ValueError("shallow label component paths must be unique")
-            if set(component_paths) != set(self.label_node_paths):
-                raise ValueError(
-                    "labelComponents must describe every labelNodePath exactly once"
-                )
         return self
 
 
-class ShallowCollection(ZarrContractModel):
-    """BIOMERO's RFC-8-shaped record for a stored shallow result."""
+class ShallowLabelBinding(ZarrContractModel):
+    """BIOMERO storage and identity binding for one logical label node."""
+
+    node_id: str = Field(alias="nodeId", pattern=r"^[a-zA-Z0-9-_.]+$")
+    component: ZarrLabelComponent
+
+
+class ShallowBindings(ZarrContractModel):
+    """Operational bindings kept separate from the scientific graph."""
+
+    images: tuple[ShallowImageBinding, ...] = Field(min_length=1)
+    labels: tuple[ShallowLabelBinding, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def validate_unique_node_ids(self) -> "ShallowBindings":
+        ids = [binding.node_id for binding in (*self.images, *self.labels)]
+        if len(ids) != len(set(ids)):
+            raise ValueError("shallow binding node IDs must be unique")
+        return self
+
+
+class ShallowManifest(ZarrContractModel):
+    """Versioned BIOMERO storage manifest for one shallow result."""
 
     workflow_id: UUID = Field(alias="workflowId")
     transfer_artifact: str = Field(alias="transferArtifact", min_length=1)
-    images: tuple[ShallowImageReference, ...] = Field(min_length=1)
     interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
-    model: Literal["rfc8-shallow-copy"] = "rfc8-shallow-copy"
-    schema_version: Literal[1] = Field(default=1, alias="schema")
+    collection: ShallowCollection
+    bindings: ShallowBindings
+    format: Literal["biomero-shallow-zarr"] = SHALLOW_FORMAT
+    schema_version: Literal[2] = Field(
+        default=SHALLOW_MANIFEST_SCHEMA,
+        alias="schema",
+    )
 
     @property
     def schema(self) -> int:
@@ -642,11 +697,48 @@ class ShallowCollection(ZarrContractModel):
         return value
 
     @model_validator(mode="after")
-    def validate_unique_image_nodes(self) -> "ShallowCollection":
-        paths = [image.image_node_path for image in self.images]
-        if len(paths) != len(set(paths)):
-            raise ValueError("shallow image node paths must be unique")
+    def validate_graph_bindings(self) -> "ShallowManifest":
+        image_nodes = {node.node_id: node for node in self.collection.images}
+        image_bindings = {
+            binding.node_id: binding for binding in self.bindings.images
+        }
+        if image_nodes.keys() != image_bindings.keys():
+            raise ValueError("every shallow image node requires one binding")
+        for node_id, node in image_nodes.items():
+            binding = image_bindings[node_id]
+            if binding.source.node_path != node.node_path:
+                raise ValueError("image binding source must match graph nodePath")
+
+        label_nodes = {node.node_id: node for node in self.collection.labels}
+        label_bindings = {
+            binding.node_id: binding for binding in self.bindings.labels
+        }
+        if label_nodes.keys() != label_bindings.keys():
+            raise ValueError("every shallow label node requires one binding")
+        for node_id, node in label_nodes.items():
+            component_path = label_bindings[node_id].component.logical_node_path
+            if component_path != node.node_path:
+                raise ValueError("label binding component must match graph nodePath")
         return self
+
+    def image_binding(self, node_id: str) -> ShallowImageBinding:
+        """Return the unique operational binding for an image node."""
+        return next(binding for binding in self.bindings.images
+                    if binding.node_id == node_id)
+
+    def label_bindings_for_image(
+        self,
+        image_id: str,
+    ) -> tuple[ShallowLabelBinding, ...]:
+        """Return label bindings related to one image, in graph order."""
+        bindings = {
+            binding.node_id: binding for binding in self.bindings.labels
+        }
+        return tuple(
+            bindings[label.node_id]
+            for label in self.collection.labels
+            if label.source_image_id == image_id
+        )
 
 
 class ShallowPlateReference(ZarrContractModel):
@@ -665,8 +757,11 @@ class ShallowPlateReference(ZarrContractModel):
     source_generation: int = Field(alias="sourceGeneration", gt=0)
     image_node_count: int = Field(alias="imageNodeCount", gt=0)
     interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
-    model: Literal["rfc8-shallow-copy"] = "rfc8-shallow-copy"
-    schema_version: Literal[1] = Field(default=1, alias="schema")
+    format: Literal["biomero-shallow-zarr"] = SHALLOW_FORMAT
+    schema_version: Literal[2] = Field(
+        default=SHALLOW_MANIFEST_SCHEMA,
+        alias="schema",
+    )
 
     @property
     def schema(self) -> int:
@@ -695,7 +790,7 @@ class ShallowPlateReference(ZarrContractModel):
             "sourceGeneration": str(self.source_generation),
             "imageNodeCount": str(self.image_node_count),
             "interchangeProfile": self.interchange_profile,
-            "model": self.model,
+            "format": self.format,
         }
 
     @classmethod
@@ -712,18 +807,18 @@ class ShallowPlateReference(ZarrContractModel):
             source_generation=int(values["sourceGeneration"]),
             image_node_count=int(values["imageNodeCount"]),
             interchange_profile=values["interchangeProfile"],
-            model=values["model"],
+            format=values["format"],
         )
 
     @classmethod
-    def from_collection(
+    def from_manifest(
         cls,
-        collection: ShallowCollection,
+        manifest: ShallowManifest,
         *,
         storage_root: str,
         relative_path: str,
     ) -> "ShallowPlateReference":
-        sources = [image.source for image in collection.images]
+        sources = [binding.source for binding in manifest.bindings.images]
         if any(source.source_object_type != "Plate" for source in sources):
             raise ValueError("shallow Plate reference requires Plate sources")
         first = sources[0]
@@ -739,13 +834,13 @@ class ShallowPlateReference(ZarrContractModel):
         return cls(
             storage_root=storage_root,
             relative_path=relative_path,
-            workflow_id=collection.workflow_id,
-            transfer_artifact=collection.transfer_artifact,
+            workflow_id=manifest.workflow_id,
+            transfer_artifact=manifest.transfer_artifact,
             source_object_id=first.source_object_id,
             source_generation=first.source_generation,
-            image_node_count=len(collection.images),
-            interchange_profile=collection.interchange_profile,
-            model=collection.model,
+            image_node_count=len(manifest.collection.images),
+            interchange_profile=manifest.interchange_profile,
+            format=manifest.format,
         )
 
 
@@ -797,8 +892,11 @@ class ShallowZarrReference(ZarrContractModel):
     )
     source: CanonicalZarrSource
     interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
-    model: Literal["rfc8-shallow-copy"] = "rfc8-shallow-copy"
-    schema_version: Literal[1] = Field(default=1, alias="schema")
+    format: Literal["biomero-shallow-zarr"] = SHALLOW_FORMAT
+    schema_version: Literal[2] = Field(
+        default=SHALLOW_MANIFEST_SCHEMA,
+        alias="schema",
+    )
 
     @property
     def schema(self) -> int:
@@ -847,7 +945,7 @@ class ShallowZarrReference(ZarrContractModel):
                 self.source.to_dict(), separators=(",", ":"), sort_keys=True
             ),
             "interchangeProfile": self.interchange_profile,
-            "model": self.model,
+            "format": self.format,
         }
 
     @classmethod
@@ -865,13 +963,13 @@ class ShallowZarrReference(ZarrContractModel):
             label_node_paths=tuple(json.loads(values["labelNodePaths"])),
             source=CanonicalZarrSource.from_dict(json.loads(values["source"])),
             interchange_profile=values["interchangeProfile"],
-            model=values["model"],
+            format=values["format"],
         )
 
     @classmethod
-    def from_collection(
+    def from_manifest(
         cls,
-        collection: ShallowCollection,
+        manifest: ShallowManifest,
         *,
         storage_root: str,
         relative_path: str,
@@ -880,16 +978,23 @@ class ShallowZarrReference(ZarrContractModel):
     ) -> "ShallowZarrReference":
         """Create a projection reference and require collection membership."""
         matches = [
-            image for image in collection.images
-            if image.image_node_path == image_node_path
+            image for image in manifest.collection.images
+            if image.node_path == image_node_path
         ]
         if len(matches) != 1:
             raise ValueError(
                 "reference must identify exactly one shallow collection image"
             )
-        requested_labels = matches[0].label_node_paths if label_node_paths is None else label_node_paths
+        image = matches[0]
+        collection_labels = tuple(
+            label.node_path for label in manifest.collection.labels
+            if label.source_image_id == image.node_id
+        )
+        requested_labels = (
+            collection_labels if label_node_paths is None else label_node_paths
+        )
         if not set(requested_labels).issubset(
-            matches[0].label_node_paths
+            collection_labels
         ):
             raise ValueError(
                 "reference labels must belong to the shallow collection image"
@@ -897,13 +1002,13 @@ class ShallowZarrReference(ZarrContractModel):
         return cls(
             storage_root=storage_root,
             relative_path=relative_path,
-            workflow_id=collection.workflow_id,
-            transfer_artifact=collection.transfer_artifact,
+            workflow_id=manifest.workflow_id,
+            transfer_artifact=manifest.transfer_artifact,
             image_node_path=image_node_path,
             label_node_paths=requested_labels,
-            source=matches[0].source,
-            interchange_profile=collection.interchange_profile,
-            model=collection.model,
+            source=manifest.image_binding(image.node_id).source,
+            interchange_profile=manifest.interchange_profile,
+            format=manifest.format,
         )
 
 
@@ -916,6 +1021,8 @@ __all__ = [
     "PIXEL_IDENTITY_METHOD",
     "SHALLOW_COLLECTION_MANIFEST",
     "SHALLOW_COLLECTION_NAMESPACE",
+    "SHALLOW_FORMAT",
+    "SHALLOW_MANIFEST_SCHEMA",
     "TRANSFER_INPUT_MARKER",
     "CanonicalInput",
     "CanonicalInputManifest",
@@ -928,7 +1035,12 @@ __all__ = [
     "ManagedZarrNode",
     "PixelIdentity",
     "ShallowCollection",
-    "ShallowImageReference",
+    "ShallowBindings",
+    "ShallowImageBinding",
+    "ShallowImageNode",
+    "ShallowLabelBinding",
+    "ShallowLabelNode",
+    "ShallowManifest",
     "ShallowPlateReference",
     "ShallowZarrReference",
     "ZarrImportOptions",

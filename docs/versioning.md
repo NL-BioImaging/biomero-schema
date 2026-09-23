@@ -38,10 +38,8 @@ before enabling remote normalization. The configured helper image and tool
 version must agree with the receipt, independently of the schema package
 version.
 
-Shallow collections and image references also accept empty `labelNodePaths`.
-This allows an unchanged image result with no labels to reference its canonical
-pixels. Existing label-bearing records remain valid, but consumers with older
-minimum-label constraints need upgrading before accepting label-free records.
+Shallow manifests may contain an image with no label nodes. This allows an
+unchanged image result with no labels to reference its canonical pixels.
 
 See [Remote shallower contracts](remote-shallower-contracts.md) for the report
 formats and the checks performed by consuming services.
@@ -56,5 +54,6 @@ base Image or Plate if the result must be visible in OMERO.
 
 BIOMERO will advance this profile as Glencoe and OMERO release support for
 newer NGFF versions. Providers are not expected to implement BIOMERO's internal
-shallow manifest; standard RFC-8/collection output can be adopted as support
-matures.
+shallow manifest. The logical graph and operational bindings are separate so an
+accepted RFC-8/Collections serializer can replace the private representation as
+support matures.

@@ -3,7 +3,7 @@
 `biomero_schema.shallower` defines the reports and receipts exchanged when
 BIOMERO normalizes workflow results on Slurm before transferring them to the
 importer. Remote normalization uses the same canonical-input snapshot and
-shallow collection format as local normalization; it changes where that work
+shallow manifest format as local normalization; it changes where that work
 is performed, not the meaning of the stored result.
 
 The schema package validates data structures only. It does not submit jobs,
@@ -19,9 +19,9 @@ Workflow providers do not need to produce these records.
 | `RemoteShallowReceipt` | Trusted orchestration data, forwarded in import options | Binds one normalized artifact to its report checksum, helper image/version, Slurm job, and tracking task. |
 
 The constants `SHALLOW_OPERATION_REPORT` and `SHALLOW_BATCH_REPORT` provide
-the filenames. The separate `.biomero-shallow.json` collection remains the
+the filenames. The separate `.biomero-shallow.json` manifest remains the
 authority for the omitted image pixels and their canonical sources. A report
-records what happened; it does not replace the collection or the trusted input
+records what happened; it does not replace the manifest or the trusted input
 snapshot.
 
 ### Per-artifact outcome
@@ -30,20 +30,20 @@ snapshot.
 `canonicalInputs`, the artifact name, a `decision`, a human-readable `reason`,
 and a terminal `result`:
 
-- `normalized`: the result contains a shallow `collection` and the decision
+- `normalized`: the result contains a shallow `manifest` and the decision
   must be `eligible`.
-- `kept-full`: the full artifact is retained; no collection is included.
+- `kept-full`: the full artifact is retained; no manifest is included.
 - `skipped`: the artifact is passed through without normalization; no
-  collection is included.
+  manifest is included.
 
 The allowed decisions are `eligible`, `keep-full`, and `skip-passthrough`.
 For normalized results, the report's artifact and workflow ID must match its
-collection. `timings` contains named, non-negative durations in seconds.
+manifest. `timings` contains named, non-negative durations in seconds.
 Optional `bytesBefore` and `bytesAfter` record non-negative byte counts;
 `slurmJobId` and `taskId` identify execution when available.
 
-The initial report contract accepts `adapter: ngff-0.4-zarr-v2` and
-`inputContract: 1` / `outputContract: 1`. These identify the helper's adapter
+The aligned report contract accepts `adapter: ngff-0.4-zarr-v2` and
+`inputContract: 1` / `outputContract: 2`. These identify the helper's adapter
 and input/output contract revisions, independently of its package version.
 
 `ShallowBatchReport` has terminal `result: complete`. Its receipts describe
@@ -86,7 +86,7 @@ The importer receives the expected receipts through the
 workflow-produced sidecar. Before accepting a remotely normalized result, the
 consumer must bind it to exactly one expected receipt and verify the report
 bytes, configured image/version, canonical-input snapshot, task/job identity,
-and shallow collection. A checksum is not a signature: trust comes from the
+and shallow manifest. A checksum is not a signature: trust comes from the
 orchestration hand-off, not from the presence of a report in a result directory.
 
 When these checks succeed, the importer can reuse the completed normalization
@@ -97,8 +97,9 @@ follow the local preparation path.
 
 ## Compatibility and configuration
 
-All three models require an explicit `schema: 1`. Missing or unknown versions
-are rejected rather than silently interpreted as current records. Use
+Operation reports require `schema: 2`; batch reports and receipts remain at
+`schema: 1`. Missing or unknown versions are rejected rather than silently
+interpreted as current records. Use
 `from_dict()` and `to_dict()` for wire validation and serialization; use
 `model_json_schema()` when integrating a non-Python consumer.
 

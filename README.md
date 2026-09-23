@@ -105,9 +105,11 @@ The camelCase output from `to_dict()` is the stable wire representation. Every
 contract family carries its own integer `schema`, independently of the workflow
 descriptor version.
 
-The shallow-Zarr contracts are experimental BIOMERO storage contracts inspired
-by OME-NGFF RFC 8. They are not a replacement for OME-NGFF Collections and are
-not requirements for third-party workflows.
+The shallow-Zarr contracts are experimental BIOMERO storage contracts. Their
+scientific collection graph is kept separate from BIOMERO storage, identity and
+workflow bindings so that an accepted OME-NGFF Collections representation can
+replace the private serialization later. The current manifest is not RFC-8
+metadata and is not a requirement for third-party workflows.
 
 See [Remote shallower contracts](https://nl-bioimaging.github.io/biomero-schema/remote-shallower-contracts/)
 for the report formats, trusted receipt hand-off, and compatibility requirements.

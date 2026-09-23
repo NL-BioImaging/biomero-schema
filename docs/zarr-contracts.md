@@ -38,7 +38,7 @@ camelCase form returned by `to_dict()` is the stable JSON representation;
 Python packages.
 
 The contracts do not prescribe how a service stores Zarr data, locks files,
-accesses OMERO, records events, or reconstructs an RFC-8-style shallow copy.
+accesses OMERO, records events, or reconstructs a shallow result.
 Those operations remain the responsibility of the consuming service. Likewise,
 OME-NGFF and RFC-8 metadata remain external standards and are not redefined by
 this package.
@@ -71,17 +71,17 @@ this package.
   `CanonicalInput` written into a temporary workflow-transfer Zarr. The event
   snapshot remains authoritative; importers use the marker only to bind a
   renamed result to one expected input before verifying its pixel identity.
-- `ShallowImageReference` binds an omitted returned image node to its managed
-  canonical source, verified returned-pixel identity, and retained label nodes.
-  `labelNodePaths` may be empty: an unchanged image can be shallow even when
-  the workflow does not return labels.
-- `ShallowCollection` is the small RFC-8-shaped BIOMERO storage record written
-  as `.biomero-shallow.json`. It supports multiple image-node references so the
-  same contract can later represent plate results. This is an internal
-  cross-service record, not an OME-NGFF or BILAYERS extension that workflow
-  providers must understand.
-  A collection must contain at least one image reference, but need not contain
-  any labels.
+- `ShallowCollection` is the scientific graph: image nodes, label nodes and
+  their source relationships. It deliberately contains no OMERO IDs, managed
+  roots, pixel identities, workflow IDs or receipts.
+- `ShallowBindings` associates every graph node with BIOMERO's canonical-source
+  and pixel-identity records. Local and inherited labels use the same
+  `ZarrLabelComponent` contract.
+- `ShallowManifest` is the versioned private record written as
+  `.biomero-shallow.json`. It combines the graph and bindings with workflow and
+  transfer provenance under `format: biomero-shallow-zarr` and `schema: 2`.
+  It is not RFC-8 metadata. A manifest must contain at least one image but may
+  contain no labels.
 - `ShallowZarrReference` locates one image node and its retained labels in a
   managed shallow collection. BIOMERO attaches its string encoding to the
   corresponding primary OMERO result object with namespace
@@ -89,7 +89,7 @@ this package.
   label projections. Consumers must validate it against
   `.biomero-shallow.json`; the annotation is an index, not authority.
   Its label list may also be empty. When constructing a reference with
-  `from_collection()`, omitting `label_node_paths` selects all recorded labels;
+  `from_manifest()`, omitting `label_node_paths` selects all recorded labels;
   explicitly passing `()` selects none.
 - `ShallowPlateReference` is the compact Plate-level equivalent. It points to
   the collection and canonical source generation without copying every
@@ -106,6 +106,15 @@ require a new schema version and an explicit migration in consumers.
 
 See [Versioning and compatibility](versioning.md) for all version domains and
 the fail-safe compatibility rules.
+
+## RFC-8 draft projection boundary
+
+`biomero_schema.rfc8.project_rfc8_v1_draft()` projects only the scientific
+graph into the OME-NGFF RFC-8 v1 draft shape. Callers must provide explicit RFC
+paths; managed roots and provenance never leak into the projected `ome`
+metadata. This is a design and test adapter, not a production writer or a claim
+of conformance. RFC-8 is still evolving and the deployed BIOMERO interchange
+profile remains NGFF 0.4 / Zarr v2.
 
 ## Example
 
