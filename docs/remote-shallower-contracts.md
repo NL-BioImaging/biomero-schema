@@ -42,9 +42,12 @@ manifest. `timings` contains named, non-negative durations in seconds.
 Optional `bytesBefore` and `bytesAfter` record non-negative byte counts;
 `slurmJobId` and `taskId` identify execution when available.
 
-The aligned report contract accepts `adapter: ngff-0.4-zarr-v2` and
+The aligned report contract accepts `adapter: ngff-0.4-zarr-v2` or
+`adapter: ngff-0.5-zarr-v3` and
 `inputContract: 1` / `outputContract: 2`. These identify the helper's adapter
 and input/output contract revisions, independently of its package version.
+Adding the v3 adapter does not migrate v2 stores. Producers and consumers must
+both support the selected adapter before enabling v3 shallowing.
 
 `ShallowBatchReport` has terminal `result: complete`. Its receipts describe
 only successfully normalized artifacts, so an empty list is valid when all
