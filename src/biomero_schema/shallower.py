@@ -21,7 +21,7 @@ class ShallowOperationReport(ZarrContractModel):
     image: str | None = None
     input_contract: Literal[1] = Field(alias="inputContract")
     output_contract: Literal[2] = Field(alias="outputContract")
-    adapter: Literal["ngff-0.4-zarr-v2"]
+    adapter: Literal["ngff-0.4-zarr-v2", "ngff-0.5-zarr-v3"]
     canonical_inputs: CanonicalInputManifest = Field(alias="canonicalInputs")
     artifact: str
     decision: Literal["eligible", "keep-full", "skip-passthrough"]
