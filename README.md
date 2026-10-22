@@ -26,8 +26,8 @@ The package keeps two contract areas separate:
 ## Workflow descriptors
 
 Workflow providers normally describe their tools using an external workflow
-format. The `biomero` runtime detects and converts supported formats into the
-validated `WorkflowSchema` from this package:
+format. The adapters in `biomero_schema.adapters` detect and convert supported
+formats into the validated `WorkflowSchema` from this package:
 
 ```text
 BIAFLOWS descriptor.json ─┐
@@ -43,11 +43,18 @@ Currently supported inputs are:
 | [BIAFLOWS/Cytomine descriptor](https://neubias-wg5.github.io/creating_bia_workflow_and_adding_to_biaflows_instance.html) | Converts the supported legacy `cytomine-0.1` subset. It remains useful for established TIFF-oriented BIAFLOWS workflows. |
 | Native `biomero-0.1` descriptor | Validates directly. This is primarily BIOMERO's normalized service representation, although integrations may produce it explicitly. |
 
-CWL and OpenAPI descriptors are not yet supported. The adapters are maintained
-in [`biomero.schema_parsers`](https://github.com/NL-BioImaging/biomero/blob/main/biomero/schema_parsers.py),
-not in this schema package. This repository therefore documents what the
-normalized model can represent; the adapter determines which fields from an
-external format are currently converted.
+CWL and OpenAPI descriptors are not yet supported. The adapters were moved
+here from [`biomero.schema_parsers`](https://github.com/NL-BioImaging/biomero/blob/main/biomero/schema_parsers.py)
+so descriptors can be converted without the BIOMERO runtime:
+
+```python
+from biomero_schema.adapters import parse_descriptor
+
+workflow = parse_descriptor(yaml.safe_load(open("config.yaml")))
+```
+
+The adapter determines which fields from an external format are currently
+converted.
 
 See [Workflow descriptors](https://nl-bioimaging.github.io/biomero-schema/workflow-descriptors/)
 for the conversion boundary and supported mappings.
@@ -76,10 +83,13 @@ pixi run test
 
 ## Native descriptor validation
 
-The CLI validates the normalized BIOMERO descriptor. Conversion of BILAYERS or
-BIAFLOWS descriptors is performed by the `biomero` runtime before validation.
+The CLI validates the normalized BIOMERO descriptor. BILAYERS (`.yaml`) and
+BIAFLOWS descriptors are detected and converted before validation, and
+`parse --json` writes the converted descriptor.
 
 ```bash
+biomero-schema validate config.yaml
+biomero-schema parse config.yaml --json > descriptor.json
 biomero-schema validate descriptor.json
 biomero-schema parse descriptor.json
 biomero-schema parse descriptor.json --pretty
