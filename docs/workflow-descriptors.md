@@ -1,19 +1,19 @@
 # Workflow descriptors
 
 The workflow schema is BIOMERO's normalized internal representation. Workflow
-providers normally publish an established external descriptor; the `biomero`
-runtime detects that format, converts its supported fields, and validates the
-result as a `WorkflowSchema`.
+providers normally publish an established external descriptor; the adapters
+in `biomero_schema.adapters` detect that format, convert its supported fields,
+and validate the result as a `WorkflowSchema`.
 
 ```text
 external descriptor -> biomero adapter -> WorkflowSchema -> BIOMERO consumers
 ```
 
-The conversion adapters belong to the
-[`biomero` runtime](https://github.com/NL-BioImaging/biomero/blob/main/biomero/schema_parsers.py),
-not this package. This distinction lets the Pydantic model remain a stable
-contract between BIOMERO services while provider-facing specifications evolve
-independently.
+The conversion adapters were moved here from the
+[`biomero` runtime](https://github.com/NL-BioImaging/biomero/blob/main/biomero/schema_parsers.py)
+so tools other than BIOMERO (validators, viewers) can read provider
+descriptors. Use `biomero_schema.adapters.parse_descriptor()` or the
+`biomero-schema parse` CLI.
 
 ## Supported provider formats
 
