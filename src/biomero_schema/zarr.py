@@ -23,6 +23,7 @@ SHALLOW_FORMAT = "biomero-shallow-zarr"
 SHALLOW_MANIFEST_SCHEMA = 2
 TRANSFER_INPUT_MARKER = ".biomero-input.json"
 PIXEL_IDENTITY_METHOD = "iscc-bio/imagewalk"
+PIXEL_COMPARISON_PROFILE = "biomero-pixels-v1"
 
 
 class ZarrContractModel(BaseModel):
@@ -57,7 +58,11 @@ def _validate_relative_path(value: str, *, allow_dot: bool) -> str:
 
 
 class PixelIdentity(ZarrContractModel):
-    """ISCC-BIO identity and semantic guard for one NGFF image or label node."""
+    """Resolution-specific ISCC-BIO fingerprint and full-image semantic guard.
+
+    Missing/old profiles are readable for cache invalidation only. They are not
+    evidence under the current comparison policy.
+    """
 
     node_path: str = Field(alias="nodePath")
     role: Literal["image", "label"]
@@ -74,7 +79,20 @@ class PixelIdentity(ZarrContractModel):
         alias="coordinateTransformations",
     )
     method: Literal["iscc-bio/imagewalk"] = PIXEL_IDENTITY_METHOD
-    schema_version: Literal[1] = Field(default=1, alias="schema")
+    comparison_profile: str | None = Field(default=None, alias="comparisonProfile")
+    dataset_path: str | None = Field(default=None, alias="datasetPath")
+    comparison_shape: tuple[int, ...] | None = Field(default=None, alias="comparisonShape")
+    comparison_coordinate_transformations: tuple[dict[str, Any], ...] = Field(
+        default_factory=tuple, alias="comparisonCoordinateTransformations")
+    code_bits: int = Field(default=256, alias="codeBits", gt=0)
+    schema_version: Literal[1, 2] = Field(default=2, alias="schema")
+
+    @property
+    def is_current_profile(self) -> bool:
+        return (self.schema_version == 2
+                and self.comparison_profile == PIXEL_COMPARISON_PROFILE
+                and self.dataset_path is not None
+                and self.comparison_shape is not None)
 
     @property
     def schema(self) -> int:
@@ -97,6 +115,19 @@ class PixelIdentity(ZarrContractModel):
     def validate_axes_match_shape(self) -> "PixelIdentity":
         if len(self.axes) != len(self.shape):
             raise ValueError("axes and shape must have the same length")
+        if self.dataset_path is not None:
+            _validate_relative_path(self.dataset_path, allow_dot=True)
+        if self.comparison_profile == PIXEL_COMPARISON_PROFILE:
+            selected = self.comparison_shape
+            if selected is None or self.dataset_path is None:
+                raise ValueError("Current comparison requires dataset path and shape")
+            if len(selected) != len(self.shape) or any(size < 1 for size in selected):
+                raise ValueError("Comparison shape must match the image axes")
+            if any(selected[i] != size for i, size in enumerate(self.shape)
+                   if self.axes[i] not in {"x", "y"}):
+                raise ValueError("Comparison must preserve all channel/Z/time positions")
+            if self.role == "label" and selected != self.shape:
+                raise ValueError("Label identity must use full-resolution pixels")
         return self
 
 
@@ -112,7 +143,8 @@ class CanonicalZarrSource(ZarrContractModel):
     source_object_id: int = Field(alias="sourceObjectId", gt=0)
     source_generation: int = Field(alias="sourceGeneration", gt=0)
     interchange_profile: str = Field(alias="interchangeProfile", min_length=1)
-    pixel_identity: PixelIdentity = Field(alias="pixelIdentity")
+    pixel_identity: PixelIdentity | None = Field(default=None, alias="pixelIdentity")
+    image_metadata: dict[str, Any] | None = Field(default=None, alias="imageMetadata")
     pixel_identity_origin: Literal[
         "raw", "omero-pixels", "canonical-bootstrap"
     ] = Field(alias="pixelIdentityOrigin")
@@ -163,13 +195,16 @@ class CanonicalZarrSource(ZarrContractModel):
             "sourceGeneration": str(self.source_generation),
             "interchangeProfile": self.interchange_profile,
             "pixelIdentity": json.dumps(
-                self.pixel_identity.to_dict(), separators=(",", ":"), sort_keys=True
+                self.pixel_identity.to_dict() if self.pixel_identity else None,
+                separators=(",", ":"), sort_keys=True
             ),
             "pixelIdentityOrigin": self.pixel_identity_origin,
             "canonicalPixelVerified": str(self.canonical_pixel_verified).lower(),
         }
         if self.store_identity is not None:
             values["storeIdentity"] = self.store_identity
+        if self.image_metadata is not None:
+            values["imageMetadata"] = json.dumps(self.image_metadata, sort_keys=True)
         return values
 
     @classmethod
@@ -189,9 +224,8 @@ class CanonicalZarrSource(ZarrContractModel):
             source_object_id=int(values["sourceObjectId"]),
             source_generation=int(values["sourceGeneration"]),
             interchange_profile=values["interchangeProfile"],
-            pixel_identity=PixelIdentity.from_dict(
-                json.loads(values["pixelIdentity"])
-            ),
+            pixel_identity=json.loads(values.get("pixelIdentity", "null")),
+            image_metadata=json.loads(values.get("imageMetadata", "null")),
             pixel_identity_origin=values["pixelIdentityOrigin"],
             canonical_pixel_verified=verified == "true",
             store_identity=values.get("storeIdentity"),
@@ -551,6 +585,9 @@ class CanonicalInputManifest(ZarrContractModel):
     workflow_id: UUID = Field(alias="workflowId")
     export_task_id: UUID = Field(alias="exportTaskId")
     inputs: tuple[CanonicalInput, ...] = Field(default_factory=tuple)
+    original_pixels_not_required: bool = Field(default=False, alias="originalPixelsNotRequired")
+    workflow_name: str | None = Field(default=None, alias="workflowName")
+    workflow_version: str | None = Field(default=None, alias="workflowVersion")
     schema_version: Literal[1] = Field(default=1, alias="schema")
 
     @property
@@ -635,12 +672,18 @@ class ShallowImageBinding(ZarrContractModel):
 
     node_id: str = Field(alias="nodeId", pattern=r"^[a-zA-Z0-9-_.]+$")
     source: CanonicalZarrSource
-    returned_pixel_identity: PixelIdentity = Field(
-        alias="returnedPixelIdentity"
+    returned_pixel_identity: PixelIdentity | None = Field(
+        default=None, alias="returnedPixelIdentity"
     )
+    decision_basis: Literal["pixel-comparison", "ro-crate-output", "workflow-setting"] = Field(
+        default="pixel-comparison", alias="decisionBasis")
 
     @model_validator(mode="after")
     def validate_identity_node(self) -> "ShallowImageBinding":
+        if self.returned_pixel_identity is None:
+            if self.decision_basis == "pixel-comparison":
+                raise ValueError("Pixel comparison requires measured returned pixels")
+            return self
         if self.returned_pixel_identity.node_path != self.source.node_path:
             raise ValueError(
                 "returnedPixelIdentity.nodePath must equal source.nodePath"

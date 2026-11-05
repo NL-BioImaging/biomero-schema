@@ -23,6 +23,7 @@ class ShallowOperationReport(ZarrContractModel):
     output_contract: Literal[2] = Field(alias="outputContract")
     adapter: Literal["ngff-0.4-zarr-v2", "ngff-0.5-zarr-v3"]
     canonical_inputs: CanonicalInputManifest = Field(alias="canonicalInputs")
+    refreshed_inputs: CanonicalInputManifest | None = Field(default=None, alias="refreshedInputs")
     artifact: str
     decision: Literal["eligible", "keep-full", "skip-passthrough"]
     reason: str

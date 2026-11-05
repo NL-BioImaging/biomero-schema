@@ -1,113 +1,91 @@
-# Pixel identity
+# Resolution-specific pixel fingerprints
 
-`PixelIdentity` records the identity of one NGFF image or label node. BIOMERO
-uses [ISCC-BIO](https://github.com/bio-codes/iscc-bio)'s IMAGEWALK method to
-read decoded level-0 pixels in a deterministic plane order. This is the right
-scope for answering “did the workflow change these image pixels?” because it
-is independent of Zarr chunking, compression, added pyramid levels, labels,
-and metadata edits.
+`PixelIdentity` records a resolution-specific pixel fingerprint using
+[ISCC-BIO](https://github.com/bio-codes/iscc-bio). BIOMERO reads decoded numerical
+planes from an existing NGFF pyramid level and supplies them to ISCC-BIO's
+`generate_biocode(planes)` API. Upstream performs canonical row-major, big-endian
+pixel encoding and hashing; planes follow IMAGEWALK Z → C → T order.
 
-It is not an ISCC TREEWALK checksum over the complete Zarr store. Such a store
-checksum changes when labels or attributes are added and therefore cannot
-decide whether the original image pixels stayed the same.
+For original images BIOMERO selects the coarsest compatible stored level,
+preserving every channel, Z slice and timepoint. Source and result must have
+compatible dimensions, axes, dtype and coordinate transformations at both the
+full and selected resolutions. A single-level image uses its full resolution.
+Labels use full-resolution fingerprints independently of image comparison.
 
-## Field reference
+Equal Instance-Codes establish agreement of the selected canonical pixel byte
+streams. Inferring unchanged full-resolution images from a smaller pyramid
+level is **BIOMERO's deduplication policy**, not a full-resolution equality proof
+or perceptual ISCC matching. Workflows must return internally consistent
+pyramids. Unsupported or unmatched results remain full.
 
-| JSON field | Meaning | Used for current equality? |
-| --- | --- | --- |
-| `schema` | Version of the BIOMERO `PixelIdentity` wire record. It is not an NGFF or ISCC version. | Validates the record |
-| `method` | Identity algorithm family. Schema 1 requires `iscc-bio/imagewalk`. | Validates the record |
-| `iscc` | Composite ISCC returned by ISCC-BIO. Useful as a portable content identifier and provenance claim. | No |
-| `dataCode` | ISCC Data-Code component describing data similarity/content. It is retained for identification and future similarity use. | No |
-| `instanceCode` | ISCC Instance-Code over IMAGEWALK's canonical decoded pixel byte stream. This is the exact pixel-code component. | **Yes** |
-| `toolVersion` | Installed `iscc-bio` package version that produced the record. | Diagnostic only |
-| `imagewalkRevision` | Exact IMAGEWALK implementation revision used by the generator. This makes an experimental implementation reproducible and auditable. | Diagnostic only |
-| `nodePath` | Relative path of the image/label group within this Zarr store, for example `B/1/0`. | No; paths may change |
-| `role` | Whether this node is an `image` or `label`. | **Yes** |
-| `shape` | Level-0 array dimensions in axis order. | **Yes** |
-| `dtype` | Level-0 decoded array data type, for example `uint16`. | **Yes** |
-| `axes` | Ordered semantic axes corresponding one-to-one with `shape`. | **Yes** |
-| `coordinateTransformations` | NGFF coordinate transformations that give the pixels their spatial meaning. | **Yes** |
+## What is calculated
 
-!!! important "The code is a claim until BIOMERO verifies it"
-    An identity embedded in metadata can be copied or left stale by a
-    workflow. At the storage boundary BIOMERO recomputes the returned identity
-    and compares it with the identity it recorded for the exact workflow
-    input. The original is never deleted; only redundant pixels in that new
-    workflow result are omitted after a successful comparison.
+| ISCC-BIO component | BIOMERO use |
+| --- | --- |
+| IMAGEWALK traversal and canonical pixel encoding | Selected-resolution planes |
+| Instance-Code | Equality of canonical pixel bytes, with semantic guards |
+| Data-Code and composite ISCC-SUM | Retained identifiers; similarity does not authorize removal |
+| Raw file/store checksum | Not calculated for shallowing |
+| Imagecode, perceptual Image-Code, Mixed-Code, rendered thumbnails | Not used |
 
-The comparison can run locally in the importer or remotely in the shallower
-helper. In the remote path, the importer validates a trusted receipt and the
-associated report/collection instead of hashing the omitted pixels again.
-The trust boundary and required checks are described in
-[Remote shallower contracts](remote-shallower-contracts.md).
+An ISCC-SUM's meaning depends on its input byte stream. The composite returned
+by the pixel API is not the raw-store checksum produced by the high-level file
+API. Chunking and compression do not enter the decoded-pixel fingerprint.
 
-## Exact comparison predicate
+## Current comparison record
 
-In schema 1, two nodes are eligible for BIOMERO's “unchanged pixels” decision
-only when all of the following values are equal:
+Schema `2` uses the BIOMERO-specific profile `biomero-pixels-v1`.
 
-```text
-instanceCode
-role
-shape
-dtype
-axes
-coordinateTransformations
-```
+| Wire field | Meaning |
+| --- | --- |
+| `schema`, `comparisonProfile` | Record version and comparison policy |
+| `method` | `iscc-bio/imagewalk` algorithm family |
+| `iscc`, `dataCode`, `instanceCode` | Pixel API composite, Data-Code and Instance-Code |
+| `codeBits` | Bit length of each component code; currently 256 |
+| `toolVersion`, `imagewalkRevision` | Generator versions for reproducibility |
+| `nodePath`, `role` | Image/label node and role |
+| `shape`, `dtype`, `axes`, `coordinateTransformations` | Full-resolution semantic guard |
+| `datasetPath` | Selected array path; provenance, not an equality key |
+| `comparisonShape`, `comparisonCoordinateTransformations` | Resolution actually fingerprinted |
 
-`iscc`, `dataCode`, and `nodePath` are deliberately not equality keys. The
-first two do not represent the exact comparison BIOMERO needs; the path is a
-locator and can legitimately change between input and output stores.
+Comparison requires current profiles, matching code lengths, Instance-Codes,
+roles, full semantic guards and selected-resolution guards. Dataset/node path
+spelling may differ. Data-Code similarity and the composite code do not decide
+whether pixels may be omitted.
 
-Failure to compute an identity, a missing input match, ambiguity, or any guard
-mismatch is fail-safe: the returned Zarr remains full.
+An old or missing profile is stale metadata. Consumers regenerate its single
+current record from the same authoritative backing Zarr; they do not re-export,
+copy or reimport the source, preserve a parallel legacy cache, or reinterpret
+the old code as a new-profile fingerprint. Reading an older record exists only
+to detect and refresh it. Source pixels and retained label stores remain intact.
 
-## Example
+## Source-linked decisions
 
-```json
-{
-  "schema": 1,
-  "method": "iscc-bio/imagewalk",
-  "iscc": "ISCC:K4ABAOQM5UXJ2LU3VEQWTEUSR4R3KS5WH2RJGEYXM5G5PLCGSUS5D4A",
-  "dataCode": "ISCC:GADRAOQM5UXJ2LU3VEQWTEUSR4R3K76D3R3JR6DXINBTCTJTQFTX3DY",
-  "instanceCode": "ISCC:IADUXNR6UKJRGF3HJXL2YRUVEXI7BYADX6Z72BWSUK4QULFHH4U7N2Q",
-  "toolVersion": "0.1.0",
-  "imagewalkRevision": "iscc-bio/0.1.0@c536d7699b7d25592bfe5c91c947b749344b6914",
-  "nodePath": "B/1/0",
-  "role": "image",
-  "shape": [2, 2008, 2008],
-  "dtype": "uint16",
-  "axes": ["c", "y", "x"],
-  "coordinateTransformations": [
-    {"type": "scale", "scale": [1, 0.345, 0.345]}
-  ]
-}
-```
+The canonical locator and generation may exist without a `pixelIdentity`.
+`imageMetadata` supplies cheap full-image semantics without requiring a hash.
+This supports output interpretation without computing an unused identity.
 
-## Where identities live
+Each shallow image binding records `decisionBasis`: `pixel-comparison`,
+`ro-crate-output`, or `workflow-setting`. The comparison path requires a
+measured `returnedPixelIdentity`; the source-linked paths leave it absent.
+They reuse the known input as background, retain derived results and labels,
+and make no claim that returned original pixels were measured or unchanged.
+The canonical source's `canonicalPixelVerified` flag records prior source
+verification; it is not a substitute for a current comparison fingerprint.
 
-The contract can appear inside `CanonicalZarrSource`, Plate image records,
-workflow input snapshots, and `.biomero-shallow.json`. BIOMERO may also index
-canonical source records in OMERO MapAnnotations. The schema does not require
-mutating a provider's raw source Zarr.
+Shallow storage disabled always keeps full results. When enabled, usable
+run-bound RO-Crate label outputs take precedence automatically. An independent
+workflow setting supplies source-linked handling without usable declarations.
+Otherwise pixel comparison runs. Neither metadata nor the setting overrides
+the full-storage choice.
 
-ISCC maintainers recommend `attributes.iscc` on an NGFF Image group for a
-portable embedded claim, as a sibling of `attributes.ome`. BIOMERO's current
-managed-source record is intentionally richer because it also needs semantic
-guards and storage provenance. A future stable ISCC-BIO/NGFF convention may
-allow this representation to become smaller or more standard.
+## Reproducibility and authority
 
-## Experimental points
+The profile is BIOMERO policy; [IMAGEWALK IEP-0018](https://ieps.iscc.codes/iep-0018/)
+is a draft upstream specification. Record both BIOMERO/helper and ISCC-BIO
+versions. This does not claim certification of the full pipeline against ISCC.
 
-- ISCC-BIO and IMAGEWALK are still young and their implementation metadata may
-  evolve.
-- Cross-format identity (for example, a LIF image and its canonical Zarr) is a
-  valuable future capability but is not assumed by shallow normalization.
-- Per-label identities are supported by the schema and are needed to distinguish
-  inherited, changed, and new labels during chained workflows.
-- BIOMERO records enough generator information to migrate or recompute codes if
-  a future IMAGEWALK revision changes canonicalization.
-
-See the upstream [IMAGEWALK specification](https://github.com/bio-codes/iscc-bio/blob/main/docs/imagewalk.md)
-for algorithm details.
+Identity claims supplied by a workflow are not trusted comparison evidence.
+Local shallowing computes the selected pixels; remote shallowing supplies the
+[trusted receipt and report](remote-shallower-contracts.md). Canonical source
+identity remains bound to the selected input's storage locator and generation.
