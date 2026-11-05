@@ -50,9 +50,16 @@ Adding the v3 adapter does not migrate v2 stores. Producers and consumers must
 both support the selected adapter before enabling v3 shallowing.
 
 `ShallowBatchReport` has terminal `result: complete`. Its receipts describe
-only successfully normalized artifacts, so an empty list is valid when all
-artifacts were kept full or skipped. Batch completion does not mean every
-artifact was made shallow.
+normalized artifacts and kept-full artifacts with refreshed source fingerprints.
+An empty list is valid when no such work was performed. Batch completion does
+not mean every artifact was made shallow.
+
+`refreshedInputs` optionally carries current-profile source records after lazy
+comparison. `canonicalInputs` remains the original run snapshot. Consumers
+validate the same workflow, input ordinals, source locators/generations and
+label inventory before replacing cached fingerprints. A failed result match
+can still refresh the source cache; it must not cause repeated source hashing.
+Source-linked decisions record their basis without inventing measured pixels.
 
 ## Trusted receipt
 
