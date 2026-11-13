@@ -18,7 +18,7 @@ identity, import lifecycle, remote shallowing reports). Published to PyPI as
 ## Layout
 
 - `src/biomero_schema/`: `models.py` (workflow descriptor), `adapters.py`
-  (external formats to `WorkflowSchema`), `zarr.py`, `imports.py`,
+  (external formats to `WorkflowSchema`), `zarr.py`, `imports.py` (also the import-storage record),
   `shallower.py`, `rfc8.py`, `cli.py`.
 - `tests/`: pytest suite and example descriptors.
 - `docs/`, `mkdocs.yml`: MkDocs Material documentation (`docs/versioning.md`

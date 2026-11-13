@@ -28,6 +28,10 @@ They do not:
 - make an embedded ISCC claim self-verifying;
 - require third-party workflows to interpret BIOMERO metadata.
 
+See [Persisted files and version fields](../persisted-files.md) for the files
+BIOMERO leaves on disk, which of them are contracts, and their version-field
+spellings.
+
 See [Remote shallower contracts](../remote-shallower-contracts.md) for the
 report and receipt formats. Deployment and scheduler settings belong to the
 services that perform and consume normalization, not to this package.

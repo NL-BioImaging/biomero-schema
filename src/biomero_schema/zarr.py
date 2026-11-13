@@ -6,14 +6,25 @@ not implement canonical storage, OMERO access, workflow events, or Zarr I/O.
 
 import json
 from pathlib import PurePosixPath
-from typing import Any, Literal, Mapping
+from typing import Annotated, Any, Literal, Mapping, Union
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    Tag,
+    field_validator,
+    model_validator,
+)
 
 
 CANONICAL_SOURCE_NAMESPACE = "biomero.zarr.source"
 CANONICAL_SOURCE_SCHEMA = 1
+CANONICAL_MARKER_NAME = ".biomero-canonical.json"
+CANONICAL_MARKER_SCHEMA = 1
+CANONICAL_MARKER_COMMITTED = "committed"
 CANONICAL_PLATE_SOURCE_NAMESPACE = "biomero.zarr.plate-source"
 CANONICAL_PLATE_IMAGE_NAMESPACE = "biomero.zarr.plate-source.image"
 CANONICAL_PLATE_LABEL_NAMESPACE = "biomero.zarr.plate-source.label"
@@ -1055,7 +1066,109 @@ class ShallowZarrReference(ZarrContractModel):
         )
 
 
+class ShallowNodePointer(ZarrContractModel):
+    """The ``biomero`` attribute that links a shallow image node to its manifest.
+
+    BIOMERO.shallower writes this object under the ``biomero`` key of every
+    image node's ``.zattrs`` when it replaces the node's ``multiscales`` with a
+    pointer to ``.biomero-shallow.json``. The pointer has no ``schema`` field
+    on the wire and gaining one would break existing readers, which forbid
+    unknown fields; ``format`` names the layout and the manifest it points to
+    carries the contract ``schema``.
+
+    The schema-1 pointer (``model: rfc8-shallow-copy`` instead of ``format``)
+    is deliberately not accepted: such a store must be migrated by
+    BIOMERO.shallower before anything else reads it.
+
+    Attributes:
+        format (str): Always ``biomero-shallow-zarr``.
+        manifest (str): Name of the manifest file in the store root.
+        workflow_id (UUID): The workflow the shallow store belongs to.
+    """
+
+    format: Literal["biomero-shallow-zarr"] = SHALLOW_FORMAT
+    manifest: str = SHALLOW_COLLECTION_MANIFEST
+    workflow_id: UUID = Field(alias="workflowId")
+
+    @field_validator("manifest")
+    @classmethod
+    def validate_manifest_name(cls, value: str) -> str:
+        if value != SHALLOW_COLLECTION_MANIFEST:
+            raise ValueError(f"manifest must be {SHALLOW_COLLECTION_MANIFEST}")
+        return value
+
+    @classmethod
+    def from_manifest(cls, manifest: ShallowManifest) -> "ShallowNodePointer":
+        """Build the pointer that BIOMERO.shallower writes for a manifest.
+
+        Args:
+            manifest (ShallowManifest): The manifest the pointer refers to.
+
+        Returns:
+            ShallowNodePointer: The pointer for the manifest's workflow.
+        """
+        return cls(format=manifest.format, workflowId=manifest.workflow_id)
+
+
+def _canonical_marker_source_kind(value: Any) -> str:
+    """Tell a Plate source from an Image source in a marker payload.
+
+    Mirrors the importer's rule: only a Plate source has ``images`` and no
+    ``sourceObjectType``.
+
+    Args:
+        value (Any): The raw ``source`` payload or an already built model.
+
+    Returns:
+        str: ``plate`` or ``image``, the tag of the matching union member.
+    """
+    if isinstance(value, CanonicalPlateSource):
+        return "plate"
+    if isinstance(value, CanonicalZarrSource):
+        return "image"
+    if "images" in value and "sourceObjectType" not in value:
+        return "plate"
+    return "image"
+
+
+CanonicalMarkerSource = Annotated[
+    Union[
+        Annotated[CanonicalZarrSource, Tag("image")],
+        Annotated[CanonicalPlateSource, Tag("plate")],
+    ],
+    Discriminator(_canonical_marker_source_kind),
+]
+
+
+class CanonicalMarker(ZarrContractModel):
+    """The commit marker of a canonical Zarr store.
+
+    BIOMERO.importer writes it as ``.biomero-canonical.json`` in the root of a
+    canonical store, or as a ``.biomero/<name>.canonical.json`` sidecar next to
+    a Zarr indexed in place. It records the full source (including every
+    per-node pixel identity of a Plate) behind the compact OMERO annotation.
+    Its version field is ``markerSchema``, not ``schema``, because it predates
+    the shared naming; the wrapped ``source`` carries its own ``schema``.
+
+    Attributes:
+        marker_schema (int): Version of this wrapper.
+        state (str): Always ``committed``; a store without a committed marker
+            is not adopted.
+        source (CanonicalZarrSource | CanonicalPlateSource): What the store is.
+    """
+
+    marker_schema: Literal[1] = Field(
+        default=CANONICAL_MARKER_SCHEMA,
+        alias="markerSchema",
+    )
+    state: Literal["committed"] = CANONICAL_MARKER_COMMITTED
+    source: CanonicalMarkerSource
+
+
 __all__ = [
+    "CANONICAL_MARKER_COMMITTED",
+    "CANONICAL_MARKER_NAME",
+    "CANONICAL_MARKER_SCHEMA",
     "CANONICAL_PLATE_IMAGE_NAMESPACE",
     "CANONICAL_PLATE_LABEL_NAMESPACE",
     "CANONICAL_SOURCE_NAMESPACE",
@@ -1069,6 +1182,8 @@ __all__ = [
     "TRANSFER_INPUT_MARKER",
     "CanonicalInput",
     "CanonicalInputManifest",
+    "CanonicalMarker",
+    "CanonicalMarkerSource",
     "CanonicalPlateImage",
     "CanonicalPlateImageRecord",
     "CanonicalPlateIndex",
@@ -1084,6 +1199,7 @@ __all__ = [
     "ShallowLabelBinding",
     "ShallowLabelNode",
     "ShallowManifest",
+    "ShallowNodePointer",
     "ShallowPlateReference",
     "ShallowZarrReference",
     "ZarrImportOptions",
