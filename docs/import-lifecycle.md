@@ -81,7 +81,7 @@ from the options envelope: its keys are snake_case and its version field is
 `schema`. There are three shapes, `RemoteImportStorageRecord`,
 `ImporterShallowImportStorageRecord` and `ImporterFullImportStorageRecord`;
 `parse_import_storage_record()` picks the right one. The wire examples are on
-[Persisted files and version fields](persisted-files.md#import-storage-record).
+[Import-storage record, canonical marker and Zarr pointer](persisted-files.md#import-storage-record).
 
 ## Registration controls
 

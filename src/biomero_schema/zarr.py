@@ -1069,9 +1069,10 @@ class ShallowZarrReference(ZarrContractModel):
 class ShallowNodePointer(ZarrContractModel):
     """The ``biomero`` attribute that links a shallow image node to its manifest.
 
-    BIOMERO.shallower writes this object under the ``biomero`` key of every
-    image node's ``.zattrs`` when it replaces the node's ``multiscales`` with a
-    pointer to ``.biomero-shallow.json``. The pointer has no ``schema`` field
+    BIOMERO.shallower writes this object as the ``biomero`` attribute of every
+    image node's NGFF attributes (``.zattrs``, or ``attributes.ome`` in
+    ``zarr.json``) when it replaces the node's ``multiscales`` with a pointer
+    to ``.biomero-shallow.json``. The pointer has no ``schema`` field
     on the wire and gaining one would break existing readers, which forbid
     unknown fields; ``format`` names the layout and the manifest it points to
     carries the contract ``schema``.
@@ -1081,21 +1082,15 @@ class ShallowNodePointer(ZarrContractModel):
     BIOMERO.shallower before anything else reads it.
 
     Attributes:
-        format (str): Always ``biomero-shallow-zarr``.
-        manifest (str): Name of the manifest file in the store root.
+        format (str): Always ``biomero-shallow-zarr``; defaults to it.
+        manifest (str): Always ``.biomero-shallow.json``, the manifest file in
+            the store root; defaults to it.
         workflow_id (UUID): The workflow the shallow store belongs to.
     """
 
     format: Literal["biomero-shallow-zarr"] = SHALLOW_FORMAT
-    manifest: str = SHALLOW_COLLECTION_MANIFEST
+    manifest: Literal[".biomero-shallow.json"] = SHALLOW_COLLECTION_MANIFEST
     workflow_id: UUID = Field(alias="workflowId")
-
-    @field_validator("manifest")
-    @classmethod
-    def validate_manifest_name(cls, value: str) -> str:
-        if value != SHALLOW_COLLECTION_MANIFEST:
-            raise ValueError(f"manifest must be {SHALLOW_COLLECTION_MANIFEST}")
-        return value
 
     @classmethod
     def from_manifest(cls, manifest: ShallowManifest) -> "ShallowNodePointer":
@@ -1113,8 +1108,8 @@ class ShallowNodePointer(ZarrContractModel):
 def _canonical_marker_source_kind(value: Any) -> str:
     """Tell a Plate source from an Image source in a marker payload.
 
-    Mirrors the importer's rule: only a Plate source has ``images`` and no
-    ``sourceObjectType``.
+    This mirrors the rule BIOMERO.importer applies when it reads a marker:
+    only a Plate source has ``images`` and no ``sourceObjectType``.
 
     Args:
         value (Any): The raw ``source`` payload or an already built model.
@@ -1126,8 +1121,14 @@ def _canonical_marker_source_kind(value: Any) -> str:
         return "plate"
     if isinstance(value, CanonicalZarrSource):
         return "image"
-    if "images" in value and "sourceObjectType" not in value:
+    if (
+        isinstance(value, Mapping)
+        and "images" in value
+        and "sourceObjectType" not in value
+    ):
         return "plate"
+    # Anything else, including a non-mapping, is validated as an Image source,
+    # which then rejects it.
     return "image"
 
 
@@ -1144,8 +1145,7 @@ class CanonicalMarker(ZarrContractModel):
     """The commit marker of a canonical Zarr store.
 
     BIOMERO.importer writes it as ``.biomero-canonical.json`` in the root of a
-    canonical store, or as a ``.biomero/<name>.canonical.json`` sidecar next to
-    a Zarr indexed in place. It records the full source (including every
+    canonical store, or as a sidecar file for a Zarr indexed in place. It records the full source (including every
     per-node pixel identity of a Plate) behind the compact OMERO annotation.
     Its version field is ``markerSchema``, not ``schema``, because it predates
     the shared naming; the wrapped ``source`` carries its own ``schema``.
@@ -1157,11 +1157,10 @@ class CanonicalMarker(ZarrContractModel):
         source (CanonicalZarrSource | CanonicalPlateSource): What the store is.
     """
 
-    marker_schema: Literal[1] = Field(
-        default=CANONICAL_MARKER_SCHEMA,
-        alias="markerSchema",
-    )
-    state: Literal["committed"] = CANONICAL_MARKER_COMMITTED
+    # Both are required on the wire; writers pass ``CANONICAL_MARKER_SCHEMA``
+    # and ``CANONICAL_MARKER_COMMITTED``.
+    marker_schema: Literal[1] = Field(alias="markerSchema")
+    state: Literal["committed"]
     source: CanonicalMarkerSource
 
 

@@ -1,10 +1,19 @@
 """Tests for cross-service Zarr contracts."""
 
+import json
+
 import pytest
 from pydantic import ValidationError
 from uuid import UUID
 
 from biomero_schema.zarr import (
+    CANONICAL_MARKER_COMMITTED,
+    CANONICAL_MARKER_NAME,
+    CANONICAL_MARKER_SCHEMA,
+    SHALLOW_COLLECTION_MANIFEST,
+    SHALLOW_FORMAT,
+    CanonicalMarker,
+    ShallowNodePointer,
     CANONICAL_PLATE_IMAGE_NAMESPACE,
     CANONICAL_PLATE_LABEL_NAMESPACE,
     CANONICAL_SOURCE_NAMESPACE,
@@ -719,3 +728,227 @@ def test_zarr_import_options_require_label_for_label_plate() -> None:
     assert ZarrImportOptions.from_dict(options.to_dict()) == options
     with pytest.raises(ValueError, match="plateLabelName"):
         ZarrImportOptions(plate_pixel_source="label")
+
+
+# ---- canonical marker and shallow node pointer ---------------------------
+
+WORKFLOW_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+PIXEL_IDENTITY = {
+    "schema": 1,
+    "method": "iscc-bio/imagewalk",
+    "nodePath": ".",
+    "role": "image",
+    "iscc": "ISCC:KPIXEL",
+    "dataCode": "ISCC:GDATA",
+    "instanceCode": "ISCC:IINSTANCE",
+    "toolVersion": "0.1.0",
+    "imagewalkRevision": "draft-2026-06",
+    "shape": [1, 1, 1, 16, 16],
+    "dtype": "uint16",
+    "axes": ["t", "c", "z", "y", "x"],
+    "coordinateTransformations": [],
+}
+
+# The `source_record` fixture of BIOMERO.importer's test_canonical_store.py,
+# i.e. CanonicalZarrSource.to_dict() as the importer embeds it in the marker.
+IMAGE_SOURCE = CanonicalZarrSource.from_dict({
+    "schema": 1,
+    "storageRoot": "group-5-data",
+    "relativePath": "project/.processed/Image-3207.ome.zarr",
+    "nodePath": ".",
+    "sourceObjectType": "Image",
+    "sourceObjectId": 3207,
+    "sourceGeneration": 1,
+    "interchangeProfile": "ngff-0.4-zarr-v2",
+    "pixelIdentity": PIXEL_IDENTITY,
+    "pixelIdentityOrigin": "raw",
+    "canonicalPixelVerified": True,
+    "storeIdentity": None,
+}).to_dict()
+
+# A Plate source has `images` and no `sourceObjectType`; each image carries a
+# full CanonicalZarrSource of the same Plate.
+PLATE_SOURCE = CanonicalPlateSource.from_dict({
+    "schema": 1,
+    "storageRoot": "group-5-data",
+    "relativePath": "project/.processed/Plate-55.ome.zarr",
+    "sourceObjectId": 55,
+    "sourceGeneration": 1,
+    "interchangeProfile": "ngff-0.4-zarr-v2",
+    "storeIdentity": None,
+    "images": [
+        {
+            "imageNodePath": path,
+            "labels": [],
+            "source": {
+                **IMAGE_SOURCE,
+                "relativePath": "project/.processed/Plate-55.ome.zarr",
+                "nodePath": path,
+                "sourceObjectType": "Plate",
+                "sourceObjectId": 55,
+                "pixelIdentity": {**PIXEL_IDENTITY, "nodePath": path},
+            },
+        }
+        for path in ("A/1/0", "B/1/0")
+    ],
+}).to_dict()
+
+
+def marker_text(source: dict) -> str:
+    """Serialize a marker exactly as CanonicalStore.commit writes it."""
+    marker = {"markerSchema": 1, "state": "committed", "source": source}
+    return json.dumps(marker, indent=2, sort_keys=True)
+
+
+def test_canonical_marker_file_name_is_the_one_the_importer_uses():
+    assert CANONICAL_MARKER_NAME == ".biomero-canonical.json"
+
+
+@pytest.mark.parametrize(
+    "source, source_model",
+    [(IMAGE_SOURCE, CanonicalZarrSource), (PLATE_SOURCE, CanonicalPlateSource)],
+)
+def test_canonical_marker_reproduces_the_written_file(source, source_model) -> None:
+    text = marker_text(source)
+
+    marker = CanonicalMarker.from_dict(json.loads(text))
+
+    assert isinstance(marker.source, source_model)
+    assert json.dumps(marker.to_dict(), indent=2, sort_keys=True) == text
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"markerSchema": 2},
+        {"state": "staging"},
+        {"schema": 1},
+        {"source": {}},
+    ],
+)
+def test_canonical_marker_rejects_uncommitted_or_unknown_markers(change) -> None:
+    wire = json.loads(marker_text(IMAGE_SOURCE))
+    with pytest.raises(ValidationError):
+        CanonicalMarker.from_dict({**wire, **change})
+
+
+@pytest.mark.parametrize("missing", ["markerSchema", "state"])
+def test_canonical_marker_requires_its_version_and_state(missing):
+    wire = json.loads(marker_text(IMAGE_SOURCE))
+    del wire[missing]
+    with pytest.raises(ValidationError):
+        CanonicalMarker.from_dict(wire)
+
+
+def test_canonical_marker_rejects_a_source_with_the_wrong_shape() -> None:
+    # `images` with a `sourceObjectType` is an Image source with an extra field.
+    wire = json.loads(marker_text(IMAGE_SOURCE))
+    wire["source"]["images"] = []
+    with pytest.raises(ValidationError):
+        CanonicalMarker.from_dict(wire)
+
+
+@pytest.mark.parametrize("value", [None, [], 5, "text"])
+def test_canonical_marker_source_rejects_non_mappings_with_a_validation_error(value):
+    wire = json.loads(marker_text(IMAGE_SOURCE))
+    with pytest.raises(ValidationError):
+        CanonicalMarker.from_dict({**wire, "source": value})
+
+
+def test_canonical_marker_accepts_built_sources():
+    image = CanonicalMarker(
+        markerSchema=CANONICAL_MARKER_SCHEMA,
+        state=CANONICAL_MARKER_COMMITTED,
+        source=CanonicalZarrSource.from_dict(IMAGE_SOURCE),
+    )
+    plate = CanonicalMarker(
+        markerSchema=CANONICAL_MARKER_SCHEMA,
+        state=CANONICAL_MARKER_COMMITTED,
+        source=CanonicalPlateSource.from_dict(PLATE_SOURCE),
+    )
+
+    assert image.to_dict() == {
+        "markerSchema": 1, "state": "committed", "source": IMAGE_SOURCE,
+    }
+    assert plate.to_dict()["source"] == PLATE_SOURCE
+
+
+# The pointer exactly as BIOMERO.shallower's normalization writes it.
+POINTER_WIRE = {
+    "format": "biomero-shallow-zarr",
+    "manifest": ".biomero-shallow.json",
+    "workflowId": WORKFLOW_ID,
+}
+
+
+def test_shallow_node_pointer_reproduces_the_written_attribute() -> None:
+    pointer = ShallowNodePointer.from_dict(POINTER_WIRE)
+
+    assert pointer.workflow_id == UUID(WORKFLOW_ID)
+    assert pointer.to_dict() == POINTER_WIRE
+    assert list(pointer.to_dict()) == ["format", "manifest", "workflowId"]
+    assert POINTER_WIRE["format"] == SHALLOW_FORMAT
+    assert POINTER_WIRE["manifest"] == SHALLOW_COLLECTION_MANIFEST
+
+
+@pytest.mark.parametrize("change", [{"format": "other"}, {"format": None}])
+def test_shallow_node_pointer_requires_the_shallow_format(change):
+    with pytest.raises(ValidationError):
+        ShallowNodePointer.from_dict({**POINTER_WIRE, **change})
+
+
+def test_shallow_node_pointer_defaults_format_and_manifest():
+    pointer = ShallowNodePointer(workflowId=WORKFLOW_ID)
+
+    assert pointer.to_dict() == POINTER_WIRE
+
+
+def test_shallow_node_pointer_requires_a_workflow_id():
+    wire = {key: value for key, value in POINTER_WIRE.items() if key != "workflowId"}
+    with pytest.raises(ValidationError):
+        ShallowNodePointer.from_dict(wire)
+
+
+def test_shallow_node_pointer_has_no_schema_field() -> None:
+    # Adding `schema` would change the wire format; the manifest is versioned.
+    with pytest.raises(ValidationError):
+        ShallowNodePointer.from_dict({**POINTER_WIRE, "schema": 2})
+
+
+def test_shallow_node_pointer_rejects_a_foreign_manifest_link() -> None:
+    with pytest.raises(ValidationError):
+        ShallowNodePointer.from_dict({**POINTER_WIRE, "manifest": "other.json"})
+
+
+def test_schema_one_pointer_is_migration_only() -> None:
+    # BIOMERO.shallower's migration still reads this older pointer itself and
+    # rewrites it; this model must not accept an unmigrated schema-1 store.
+    legacy = {
+        "model": "rfc8-shallow-copy",
+        "manifest": ".biomero-shallow.json",
+        "workflowId": WORKFLOW_ID,
+    }
+    with pytest.raises(ValidationError):
+        ShallowNodePointer.from_dict(legacy)
+
+
+def test_shallow_node_pointer_from_manifest_matches_the_writer() -> None:
+    manifest = ShallowManifest(
+        workflow_id=WORKFLOW_ID,
+        transfer_artifact="Image-3207.ome.zarr",
+        interchange_profile="ngff-0.4-zarr-v2",
+        collection=ShallowCollection(
+            name="analysis result",
+            images=(ShallowImageNode(id="image-0", name=".", node_path="."),),
+        ),
+        bindings=ShallowBindings(images=(ShallowImageBinding(
+            node_id="image-0",
+            source=CanonicalZarrSource.from_dict(IMAGE_SOURCE),
+            returned_pixel_identity=PixelIdentity.from_dict(PIXEL_IDENTITY),
+        ),)),
+    )
+
+    pointer = ShallowNodePointer.from_manifest(manifest)
+
+    assert pointer.to_dict() == POINTER_WIRE

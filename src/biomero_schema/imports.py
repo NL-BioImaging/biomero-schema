@@ -1,7 +1,9 @@
 """Versioned contracts for optional BIOMERO.importer lifecycle operations.
 
-These models describe requests exchanged with the importer. They deliberately
-do not implement storage mutation, conversion, or OMERO registration.
+These models describe requests exchanged with the importer, and the
+``.biomero-import-storage.json`` record the importer persists about a result.
+They deliberately do not implement storage mutation, conversion, or OMERO
+registration.
 """
 
 from typing import Annotated, Any, Literal, Mapping, Union
@@ -126,10 +128,9 @@ class ImportStorageModel(ZarrContractModel):
     Fields are declared in the order the importer writes them.
     """
 
-    schema_version: Literal[1] = Field(
-        default=IMPORT_STORAGE_SCHEMA,
-        alias="schema",
-    )
+    # Required on the wire: a record without a version is never read as v1.
+    # Writers pass ``schema=IMPORT_STORAGE_SCHEMA``.
+    schema_version: Literal[1] = Field(alias="schema")
     workflow_id: UUID
     storage: Literal["shallow-zarr", "full-zarr"]
     location: Literal["remote", "importer"]
@@ -143,7 +144,8 @@ class RemoteImportStorageRecord(ImportStorageModel):
         storage (str): ``shallow-zarr``, or ``full-zarr`` when the remote
             helper kept the full result.
         location (str): Always ``remote``.
-        decision_basis (str): The reason in the remote report.
+        decision_basis (str | None): The reason in the remote report. Importer
+            releases before v1.5.0-beta.12 did not write it.
         container (str): Remote helper image.
         tool_version (str): Shallower version of the remote helper.
         task_id (str): Tracking task of the remote helper.
@@ -152,7 +154,7 @@ class RemoteImportStorageRecord(ImportStorageModel):
     """
 
     location: Literal["remote"] = IMPORT_STORAGE_LOCATION_REMOTE
-    decision_basis: str
+    decision_basis: str | None = None
     container: str
     tool_version: str
     task_id: str
@@ -167,13 +169,14 @@ class ImporterShallowImportStorageRecord(ImportStorageModel):
         storage (str): Always ``shallow-zarr``.
         location (str): Always ``importer``.
         tool_version (str): Shallower version that handled the result.
-        decision_basis (str): Why the result was shallowed.
+        decision_basis (str | None): Why the result was shallowed. Importer
+            releases before v1.5.0-beta.12 did not write it.
     """
 
     storage: Literal["shallow-zarr"] = IMPORT_STORAGE_SHALLOW
     location: Literal["importer"] = IMPORT_STORAGE_LOCATION_IMPORTER
     tool_version: str
-    decision_basis: str
+    decision_basis: str | None = None
 
 
 class ImporterFullImportStorageRecord(ImportStorageModel):
@@ -203,16 +206,21 @@ def _import_storage_record_kind(value: Any) -> str:
     """
     if isinstance(value, Mapping):
         location, storage = value.get("location"), value.get("storage")
-    else:
+    elif isinstance(value, ImportStorageModel):
         location, storage = value.location, value.storage
+    else:
+        # Not a record: any tag will do, validation then rejects the value.
+        return "importer-shallow"
     if location == IMPORT_STORAGE_LOCATION_REMOTE:
         return "remote"
     if storage == IMPORT_STORAGE_FULL:
         return "importer-full"
+    # An unknown `location` also lands here; validating the chosen shape then
+    # rejects it, so the tag only has to be a valid one.
     return "importer-shallow"
 
 
-ImportStorageRecord = Annotated[
+ImportStorageRecordUnion = Annotated[
     Union[
         Annotated[RemoteImportStorageRecord, Tag("remote")],
         Annotated[ImporterFullImportStorageRecord, Tag("importer-full")],
@@ -221,7 +229,7 @@ ImportStorageRecord = Annotated[
     Discriminator(_import_storage_record_kind),
 ]
 
-_IMPORT_STORAGE_RECORD_ADAPTER = TypeAdapter(ImportStorageRecord)
+_IMPORT_STORAGE_RECORD_ADAPTER = TypeAdapter(ImportStorageRecordUnion)
 
 
 def parse_import_storage_record(
@@ -254,7 +262,7 @@ __all__ = [
     "IMPORT_STORAGE_LOCATION_REMOTE",
     "IMPORT_STORAGE_SCHEMA",
     "IMPORT_STORAGE_SHALLOW",
-    "ImportStorageRecord",
+    "ImportStorageRecordUnion",
     "ImporterFullImportStorageRecord",
     "ImporterShallowImportStorageRecord",
     "RemoteImportStorageRecord",

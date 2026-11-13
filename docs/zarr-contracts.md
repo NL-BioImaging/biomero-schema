@@ -82,12 +82,13 @@ this package.
   transfer provenance under `format: biomero-shallow-zarr` and `schema: 2`.
   It is not RFC-8 metadata. A manifest must contain at least one image but may
   contain no labels.
-- `ShallowNodePointer` is the `biomero` attribute in each shallow image node's
-  `.zattrs` that points to `.biomero-shallow.json`. It has no `schema` field of
-  its own; the manifest it points to carries the version. The schema-1 pointer
-  is migration-only and not accepted.
-- `CanonicalMarker` is the commit marker `.biomero-canonical.json` (or the
-  `.biomero/<name>.canonical.json` sidecar) of a canonical Zarr. It wraps a
+- `ShallowNodePointer` is the `biomero` attribute of each shallow image node's
+  NGFF attributes (`.zattrs`, or `attributes.ome` in `zarr.json`) that points
+  to `.biomero-shallow.json`. It has no `schema` field of its own; the manifest
+  it points to carries the version. The schema-1 pointer is migration-only and
+  not accepted.
+- `CanonicalMarker` is the commit marker of a canonical Zarr, stored as
+  `.biomero-canonical.json` in the store or as a sidecar file. It wraps a
   `CanonicalZarrSource` or `CanonicalPlateSource` with `markerSchema` and
   `state: committed`.
 - `ShallowZarrReference` locates one image node and its retained labels in a
@@ -107,9 +108,9 @@ this package.
   `platePixelSource=label` requires one concrete label name and creates a
   label-backed Plate view without copying the label arrays.
 
-See [Persisted files and version fields](persisted-files.md) for which `.biomero*`
-files are contracts, which are internal state, and the version-field spellings
-(`schema`, `markerSchema`, and none for the pointer).
+See [Import-storage record, canonical marker and Zarr pointer](persisted-files.md)
+for their wire examples and the version-field spellings (`schema`,
+`markerSchema`, and none for the pointer).
 
 Each model has its own integer `schema` field, except `CanonicalMarker`
 (`markerSchema`) and `ShallowNodePointer` (none). This version is independent of
