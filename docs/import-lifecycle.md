@@ -73,6 +73,16 @@ versions. Neither an empty receipt list nor installing this schema package
 enables remote execution. Invalid receipts for already-shallowed data must not
 be treated as permission to register an unverified result as full data.
 
+## Import-storage record
+
+After preparing a result, the importer writes `.biomero-import-storage.json`
+inside the result Zarr's root to record what it did. It is a separate record
+from the options envelope: its keys are snake_case and its version field is
+`schema`. There are three shapes, `RemoteImportStorageRecord`,
+`ImporterShallowImportStorageRecord` and `ImporterFullImportStorageRecord`;
+`parse_import_storage_record()` picks the right one. The wire examples are on
+[Import-storage record, canonical marker and Zarr pointer](persisted-files.md#import-storage-record).
+
 ## Registration controls
 
 For a derived Plate, `platePixelSource: source` registers the source pixels as

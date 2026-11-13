@@ -1,12 +1,15 @@
 """Versioned contracts for optional BIOMERO.importer lifecycle operations.
 
-These models describe requests exchanged with the importer. They deliberately
-do not implement storage mutation, conversion, or OMERO registration.
+These models describe requests exchanged with the importer, and the
+``.biomero-import-storage.json`` record the importer persists about a result.
+They deliberately do not implement storage mutation, conversion, or OMERO
+registration.
 """
 
-from typing import Any, Literal, Mapping
+from typing import Annotated, Any, Literal, Mapping, Union
+from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Discriminator, Field, Tag, TypeAdapter, model_validator
 from biomero_schema.shallower import RemoteShallowReceipt
 
 from biomero_schema.zarr import (
@@ -18,6 +21,12 @@ from biomero_schema.zarr import (
 
 IMPORT_OPTIONS_ENVELOPE_SCHEMA = 2
 SHALLOW_ZARR_OPERATION = "biomero.shallow-zarr"
+IMPORT_STORAGE_FILENAME = ".biomero-import-storage.json"
+IMPORT_STORAGE_SCHEMA = 1
+IMPORT_STORAGE_SHALLOW = "shallow-zarr"
+IMPORT_STORAGE_FULL = "full-zarr"
+IMPORT_STORAGE_LOCATION_REMOTE = "remote"
+IMPORT_STORAGE_LOCATION_IMPORTER = "importer"
 
 
 class ShallowZarrImportOperation(ZarrContractModel):
@@ -111,8 +120,153 @@ def parse_import_options(
     )
 
 
+class ImportStorageModel(ZarrContractModel):
+    """Base of the import-storage record shapes.
+
+    Unlike the other contracts this file has always used snake_case keys and
+    the key ``schema``; both are kept so that existing files stay readable.
+    Fields are declared in the order the importer writes them.
+    """
+
+    # Required on the wire: a record without a version is never read as v1.
+    # Writers pass ``schema=IMPORT_STORAGE_SCHEMA``.
+    schema_version: Literal[1] = Field(alias="schema")
+    workflow_id: UUID
+    storage: Literal["shallow-zarr", "full-zarr"]
+    location: Literal["remote", "importer"]
+
+
+class RemoteImportStorageRecord(ImportStorageModel):
+    """Record written after the importer validated a remote shallowing report.
+
+    Attributes:
+        workflow_id (UUID): The workflow the result belongs to.
+        storage (str): ``shallow-zarr``, or ``full-zarr`` when the remote
+            helper kept the full result.
+        location (str): Always ``remote``.
+        decision_basis (str | None): The reason in the remote report. Importer
+            releases before v1.5.0-beta.12 did not write it.
+        container (str): Remote helper image.
+        tool_version (str): Shallower version of the remote helper.
+        task_id (str): Tracking task of the remote helper.
+        job_id (str | None): Slurm job of the helper, null when unknown.
+        report_sha256 (str): Checksum of the remote report.
+    """
+
+    location: Literal["remote"] = IMPORT_STORAGE_LOCATION_REMOTE
+    decision_basis: str | None = None
+    container: str
+    tool_version: str
+    task_id: str
+    job_id: str | None
+    report_sha256: str
+
+
+class ImporterShallowImportStorageRecord(ImportStorageModel):
+    """Record written after the importer shallowed the result itself.
+
+    Attributes:
+        storage (str): Always ``shallow-zarr``.
+        location (str): Always ``importer``.
+        tool_version (str): Shallower version that handled the result.
+        decision_basis (str | None): Why the result was shallowed. Importer
+            releases before v1.5.0-beta.12 did not write it.
+    """
+
+    storage: Literal["shallow-zarr"] = IMPORT_STORAGE_SHALLOW
+    location: Literal["importer"] = IMPORT_STORAGE_LOCATION_IMPORTER
+    tool_version: str
+    decision_basis: str | None = None
+
+
+class ImporterFullImportStorageRecord(ImportStorageModel):
+    """Record written after the importer kept the full result.
+
+    Attributes:
+        storage (str): Always ``full-zarr``.
+        location (str): Always ``importer``.
+        tool_version (str): Shallower version that handled the result.
+        reason (str): Why the full result was kept.
+    """
+
+    storage: Literal["full-zarr"] = IMPORT_STORAGE_FULL
+    location: Literal["importer"] = IMPORT_STORAGE_LOCATION_IMPORTER
+    tool_version: str
+    reason: str
+
+
+def _import_storage_record_kind(value: Any) -> str:
+    """Pick the record shape the way the importer chooses it when writing.
+
+    Args:
+        value (Any): The raw record or an already built model.
+
+    Returns:
+        str: The tag of the matching union member.
+    """
+    if isinstance(value, Mapping):
+        location, storage = value.get("location"), value.get("storage")
+    elif isinstance(value, ImportStorageModel):
+        location, storage = value.location, value.storage
+    else:
+        # Not a record: any tag will do, validation then rejects the value.
+        return "importer-shallow"
+    if location == IMPORT_STORAGE_LOCATION_REMOTE:
+        return "remote"
+    if storage == IMPORT_STORAGE_FULL:
+        return "importer-full"
+    # An unknown `location` also lands here; validating the chosen shape then
+    # rejects it, so the tag only has to be a valid one.
+    return "importer-shallow"
+
+
+ImportStorageRecordUnion = Annotated[
+    Union[
+        Annotated[RemoteImportStorageRecord, Tag("remote")],
+        Annotated[ImporterFullImportStorageRecord, Tag("importer-full")],
+        Annotated[ImporterShallowImportStorageRecord, Tag("importer-shallow")],
+    ],
+    Discriminator(_import_storage_record_kind),
+]
+
+_IMPORT_STORAGE_RECORD_ADAPTER = TypeAdapter(ImportStorageRecordUnion)
+
+
+def parse_import_storage_record(
+    value: Mapping[str, Any],
+) -> (
+    RemoteImportStorageRecord
+    | ImporterFullImportStorageRecord
+    | ImporterShallowImportStorageRecord
+):
+    """Validate the content of a ``.biomero-import-storage.json`` file.
+
+    Args:
+        value (Mapping[str, Any]): The parsed JSON object.
+
+    Returns:
+        RemoteImportStorageRecord | ImporterFullImportStorageRecord |
+            ImporterShallowImportStorageRecord: The record of its shape.
+
+    Raises:
+        pydantic.ValidationError: If the value matches no shape.
+    """
+    return _IMPORT_STORAGE_RECORD_ADAPTER.validate_python(value)
+
+
 __all__ = [
     "IMPORT_OPTIONS_ENVELOPE_SCHEMA",
+    "IMPORT_STORAGE_FILENAME",
+    "IMPORT_STORAGE_FULL",
+    "IMPORT_STORAGE_LOCATION_IMPORTER",
+    "IMPORT_STORAGE_LOCATION_REMOTE",
+    "IMPORT_STORAGE_SCHEMA",
+    "IMPORT_STORAGE_SHALLOW",
+    "ImportStorageRecordUnion",
+    "ImporterFullImportStorageRecord",
+    "ImporterShallowImportStorageRecord",
+    "RemoteImportStorageRecord",
+    "parse_import_storage_record",
     "SHALLOW_ZARR_OPERATION",
     "ImportOptionsEnvelope",
     "ShallowZarrImportOperation",

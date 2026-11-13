@@ -28,6 +28,12 @@ They do not:
 - make an embedded ISCC claim self-verifying;
 - require third-party workflows to interpret BIOMERO metadata.
 
+See [Import-storage record, canonical marker and Zarr pointer](../persisted-files.md)
+for the persisted formats read by several components and their version-field
+spellings. For where each `.biomero*` file lives and whether it is safe to
+delete, see the
+[BIOMERO file reference](https://nl-bioimaging.github.io/NL-BIOMERO/master/developer/biomero-files.html).
+
 See [Remote shallower contracts](../remote-shallower-contracts.md) for the
 report and receipt formats. Deployment and scheduler settings belong to the
 services that perform and consume normalization, not to this package.
