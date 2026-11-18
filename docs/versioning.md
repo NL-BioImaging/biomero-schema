@@ -25,8 +25,9 @@ BIOMERO Schema contains several version domains. They must not be conflated.
 
 ## Remote shallowing compatibility
 
-Remote operation reports, batch reports, and receipts each use contract schema
-1 and require the version to be explicit. They are not legacy registration
+Remote operation reports use contract schema 2 (with `inputContract` 1 and
+`outputContract` 2); batch reports and receipts use contract schema 1. All of
+them require the version to be explicit. They are not legacy registration
 options and are not upcast when their version is missing or unknown.
 
 Adding `remoteReceipts` does not change the schema-2 import envelope or the
@@ -43,6 +44,11 @@ unchanged image result with no labels to reference its canonical pixels.
 
 See [Remote shallower contracts](remote-shallower-contracts.md) for the report
 formats and the checks performed by consuming services.
+
+For where each of these files is stored on disk, which component writes and
+reads it, and whether it is safe to delete, see the
+[BIOMERO file reference](https://nl-bioimaging.github.io/NL-BIOMERO/master/developer/biomero-files.html)
+in the NL-BIOMERO documentation.
 
 ## OME-Zarr support window
 
